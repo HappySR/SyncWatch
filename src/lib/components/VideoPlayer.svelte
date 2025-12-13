@@ -1,13 +1,18 @@
 <script lang="ts">
   import { playerStore } from '$lib/stores/player.svelte';
   import { onMount, onDestroy } from 'svelte';
-  import { Play, Pause, Volume2, VolumeX } from 'lucide-svelte';
+  import { Play, Pause, Volume2, VolumeX, Maximize, SkipForward, SkipBack, Settings } from 'lucide-svelte';
 
   let videoElement: HTMLVideoElement;
   let youtubePlayer: any;
   let isMuted = $state(false);
+  let isMobile = $state(false);
   let showControls = $state(true);
   let controlsTimeout: any;
+  let isFullscreen = $state(false);
+  let containerElement: HTMLDivElement;
+  let showSettings = $state(false);
+  let playbackRate = $state(1);
 
   const videoUrl = $derived(playerStore.videoUrl);
   const videoType = $derived(playerStore.videoType);
@@ -19,14 +24,109 @@
   let isDragging = $state(false);
 
   onMount(() => {
+    // Detect mobile device
+    isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+      || window.innerWidth < 768;
+    
+    // Re-check on resize
+    const handleResize = () => {
+      isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+        || window.innerWidth < 768;
+    };
+    window.addEventListener('resize', handleResize);
+    
     loadYouTubeAPI();
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    
+    // Keyboard shortcuts (disabled on mobile)
+    if (!isMobile) {
+      document.addEventListener('keydown', handleKeyboard);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   });
 
   onDestroy(() => {
     if (youtubePlayer) {
       youtubePlayer.destroy();
     }
+    document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.removeEventListener('keydown', handleKeyboard);
   });
+
+  function handleKeyboard(e: KeyboardEvent) {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    
+    switch(e.key) {
+      case ' ':
+        e.preventDefault();
+        togglePlay();
+        break;
+      case 'f':
+        e.preventDefault();
+        toggleFullscreen();
+        break;
+      case 'm':
+        e.preventDefault();
+        toggleMute();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        skipBackward();
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        skipForward();
+        break;
+    }
+  }
+
+  function handleFullscreenChange() {
+    isFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+  }
+
+  function toggleFullscreen() {
+    if (!containerElement) return;
+    
+    if (!isFullscreen) {
+      if (containerElement.requestFullscreen) {
+        containerElement.requestFullscreen();
+      } else if ((containerElement as any).webkitRequestFullscreen) {
+        (containerElement as any).webkitRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen();
+      }
+    }
+  }
+
+  function skipForward() {
+    const newTime = Math.min(playerStore.duration, currentTime + 10);
+    playerStore.seek(newTime);
+  }
+
+  function skipBackward() {
+    const newTime = Math.max(0, currentTime - 10);
+    playerStore.seek(newTime);
+  }
+
+  function changePlaybackRate(rate: number) {
+    playbackRate = rate;
+    if (videoType === 'youtube' && youtubePlayer && youtubePlayer.setPlaybackRate) {
+      youtubePlayer.setPlaybackRate(rate);
+    } else if (videoElement) {
+      videoElement.playbackRate = rate;
+    }
+    showSettings = false;
+  }
 
   function loadYouTubeAPI() {
     if (!(window as any).YT) {
@@ -68,54 +168,86 @@
     youtubePlayer = new (window as any).YT.Player('youtube-player', {
       videoId,
       playerVars: {
-        controls: 0,
+        controls: isMobile ? 1 : 1, // Always show YouTube controls now
         modestbranding: 1,
-        rel: 0
+        rel: 0,
+        fs: isMobile ? 1 : 0, // Enable YouTube fullscreen on mobile
+        playsinline: 1 // Better mobile support
       },
       events: {
         onReady: () => {
           syncPlayer();
+          if (playbackRate !== 1) {
+            youtubePlayer.setPlaybackRate(playbackRate);
+          }
         },
         onStateChange: (event: any) => {
-          if (event.data === (window as any).YT.PlayerState.PLAYING && !isPlaying && !playerStore.isSyncing) {
-            playerStore.pause();
-          } else if (event.data === (window as any).YT.PlayerState.PAUSED && isPlaying && !playerStore.isSyncing) {
-            playerStore.play();
+          const YT = (window as any).YT;
+          
+          if (!playerStore.isSyncing) {
+            // User clicked play on YouTube player
+            if (event.data === YT.PlayerState.PLAYING && !isPlaying) {
+              playerStore.play();
+            } 
+            // User clicked pause on YouTube player
+            else if (event.data === YT.PlayerState.PAUSED && isPlaying) {
+              playerStore.pause();
+            }
           }
+        },
+        onPlaybackRateChange: (event: any) => {
+          playbackRate = event.data;
         }
       }
     });
 
+    let lastYouTubeTime = 0;
+    
     setInterval(() => {
-      if (youtubePlayer && youtubePlayer.getCurrentTime) {
+      if (youtubePlayer && youtubePlayer.getCurrentTime && youtubePlayer.getDuration) {
         const time = youtubePlayer.getCurrentTime();
-        if (!isDragging && Math.abs(time - currentTime) > 1) {
-          playerStore.currentTime = time;
+        const timeDiff = Math.abs(time - lastYouTubeTime);
+        
+        // Only sync if user manually seeked (big jump) and we're not already syncing
+        if (timeDiff > 2 && !playerStore.isSyncing && !isDragging) {
+          console.log('YouTube manual seek detected:', time);
+          playerStore.seek(time);
         }
-        if (youtubePlayer.getDuration) {
-          playerStore.duration = youtubePlayer.getDuration();
-        }
+        
+        lastYouTubeTime = time;
+        playerStore.duration = youtubePlayer.getDuration();
       }
-    }, 500);
+    }, 1000);
   }
 
   function syncPlayer() {
-    if (videoType === 'youtube' && youtubePlayer) {
-      if (isPlaying) {
-        youtubePlayer.playVideo();
-      } else {
-        youtubePlayer.pauseVideo();
-      }
-      if (Math.abs(youtubePlayer.getCurrentTime() - currentTime) > 1) {
-        youtubePlayer.seekTo(currentTime, true);
+    if (videoType === 'youtube' && youtubePlayer && youtubePlayer.getPlayerState) {
+      try {
+        const state = youtubePlayer.getPlayerState();
+        const ytTime = youtubePlayer.getCurrentTime ? youtubePlayer.getCurrentTime() : 0;
+        
+        // Sync play/pause state
+        if (isPlaying && state !== 1 && state !== 3) {
+          youtubePlayer.playVideo();
+        } else if (!isPlaying && state === 1) {
+          youtubePlayer.pauseVideo();
+        }
+        
+        // Sync time only if significantly different (> 3 seconds)
+        if (Math.abs(ytTime - currentTime) > 3) {
+          youtubePlayer.seekTo(currentTime, true);
+        }
+      } catch (e) {
+        console.log('Sync error:', e);
       }
     } else if (videoType === 'direct' && videoElement) {
-      if (isPlaying) {
-        videoElement.play();
-      } else {
+      if (isPlaying && videoElement.paused) {
+        videoElement.play().catch(e => console.log('Play failed:', e));
+      } else if (!isPlaying && !videoElement.paused) {
         videoElement.pause();
       }
-      if (Math.abs(videoElement.currentTime - currentTime) > 1) {
+      
+      if (Math.abs(videoElement.currentTime - currentTime) > 3) {
         videoElement.currentTime = currentTime;
       }
     }
@@ -127,16 +259,33 @@
     }
   });
 
+  let syncTimeout: any;
+  
   $effect(() => {
-    if (!playerStore.isSyncing) return;
-    syncPlayer();
+    if (playerStore.isSyncing) {
+      clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(() => {
+        syncPlayer();
+      }, 100);
+    }
   });
 
   function togglePlay() {
+    console.log('Toggle play clicked. Current state:', isPlaying);
     if (isPlaying) {
       playerStore.pause();
+      if (videoType === 'youtube' && youtubePlayer && youtubePlayer.pauseVideo) {
+        youtubePlayer.pauseVideo();
+      } else if (videoElement) {
+        videoElement.pause();
+      }
     } else {
       playerStore.play();
+      if (videoType === 'youtube' && youtubePlayer && youtubePlayer.playVideo) {
+        youtubePlayer.playVideo();
+      } else if (videoElement) {
+        videoElement.play();
+      }
     }
   }
 
@@ -183,17 +332,19 @@
     showControls = true;
     clearTimeout(controlsTimeout);
     controlsTimeout = setTimeout(() => {
-      if (isPlaying) showControls = false;
+      if (isPlaying && !showSettings) showControls = false;
     }, 3000);
   }
 </script>
 
 <div 
+  bind:this={containerElement}
   role="region"
   aria-label="Video player"
   class="relative bg-black rounded-xl overflow-hidden aspect-video group"
+  class:fullscreen-container={isFullscreen}
   onmousemove={handleMouseMove}
-  onmouseleave={() => isPlaying && (showControls = false)}
+  onmouseleave={() => isPlaying && !showSettings && (showControls = false)}
 >
   {#if !videoUrl}
     <div class="absolute inset-0 flex items-center justify-center text-white/60">
@@ -203,7 +354,13 @@
       </div>
     </div>
   {:else if videoType === 'youtube'}
-    <div id="youtube-player" class="w-full h-full"></div>
+    <div id="youtube-player" class="w-full h-full pointer-events-auto"></div>
+    {#if isMobile}
+      <div class="absolute top-4 left-4 right-4 bg-black/70 backdrop-blur-sm rounded-lg p-3 text-white text-sm pointer-events-none z-10">
+        <p class="font-medium mb-1">Mobile Mode</p>
+        <p class="text-xs text-white/80">Use YouTube's controls (tap video) for all settings including quality</p>
+      </div>
+    {/if}
   {:else}
     <video
       bind:this={videoElement}
@@ -223,13 +380,14 @@
   {/if}
     
   <div 
-    class="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300"
-    class:opacity-0={!showControls && isPlaying}
-    class:opacity-100={showControls || !isPlaying}
+    class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 pointer-events-none"
+    class:opacity-0={!showControls && isPlaying && !isMobile}
+    class:opacity-100={showControls || !isPlaying || isMobile}
+    class:hidden={isMobile && videoType === 'youtube'}
   >
     <button
       onclick={togglePlay}
-      class="absolute inset-0 flex items-center justify-center group/play"
+      class="absolute inset-0 flex items-center justify-center group/play pointer-events-auto"
     >
       <div class="bg-white/10 backdrop-blur-sm rounded-full p-6 group-hover/play:bg-white/20 transition">
         {#if isPlaying}
@@ -240,7 +398,7 @@
       </div>
     </button>
 
-    <div class="absolute bottom-0 left-0 right-0 p-4 space-y-2">
+    <div class="absolute bottom-0 left-0 right-0 p-4 space-y-2 pointer-events-auto">
       <div
         bind:this={progressBarElement}
         role="button"
@@ -250,9 +408,9 @@
         onclick={handleProgressClick}
         onkeydown={(e) => {
           if (e.key === 'ArrowLeft') {
-            playerStore.seek(Math.max(0, currentTime - 5));
+            skipBackward();
           } else if (e.key === 'ArrowRight') {
-            playerStore.seek(Math.min(playerStore.duration, currentTime + 5));
+            skipForward();
           }
         }}
       >
@@ -264,17 +422,25 @@
         </div>
       </div>
 
-      <div class="flex items-center justify-between text-white">
-        <div class="flex items-center gap-4">
-          <button onclick={togglePlay} class="hover:text-purple-400 transition">
+      <div class="flex items-center justify-between text-white" class:flex-col={isMobile} class:gap-2={isMobile}>
+        <div class="flex items-center gap-3 md:gap-4" class:w-full={isMobile} class:justify-center={isMobile}>
+          <button onclick={togglePlay} class="hover:text-purple-400 transition touch-manipulation" title="Play/Pause (Space)">
             {#if isPlaying}
-              <Pause class="w-5 h-5" />
+              <Pause class={isMobile ? "w-6 h-6" : "w-5 h-5"} />
             {:else}
               <Play class="w-5 h-5" />
             {/if}
           </button>
 
-          <button onclick={toggleMute} class="hover:text-purple-400 transition">
+          <!-- <button onclick={skipBackward} class="hover:text-purple-400 transition" title="Rewind 10s (←)">
+            <SkipBack class="w-5 h-5" />
+          </button>
+
+          <button onclick={skipForward} class="hover:text-purple-400 transition" title="Forward 10s (→)">
+            <SkipForward class="w-5 h-5" />
+          </button> -->
+
+          <button onclick={toggleMute} class="hover:text-purple-400 transition" title="Mute (M)">
             {#if isMuted}
               <VolumeX class="w-5 h-5" />
             {:else}
@@ -296,7 +462,64 @@
             {formatTime(currentTime)} / {formatTime(playerStore.duration)}
           </span>
         </div>
+
+        <div class="flex items-center gap-4">
+          <div class="relative mt-1">
+            <button 
+              onclick={() => showSettings = !showSettings} 
+              class="hover:text-purple-400 transition"
+              title="Settings"
+            >
+              <Settings class="w-5 h-5" />
+            </button>
+
+            {#if showSettings}
+              <div class="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg p-2 min-w-[150px]">
+                <div class="text-xs text-white/60 mb-2 px-2">Playback Speed</div>
+                {#each [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as rate}
+                  <button
+                    onclick={() => changePlaybackRate(rate)}
+                    class="w-full text-left px-3 py-2 rounded hover:bg-white/10 transition text-sm"
+                    class:bg-purple-500={playbackRate === rate}
+                  >
+                    {rate}x {rate === 1 ? '(Normal)' : ''}
+                  </button>
+                {/each}
+                
+                <!-- {#if videoType === 'youtube' && youtubePlayer && youtubePlayer.getAvailableQualityLevels}
+                  <div class="text-xs text-white/60 mb-2 px-2 mt-3 pt-3 border-t border-white/10">Quality</div>
+                  {#each youtubePlayer.getAvailableQualityLevels() as quality}
+                    <button
+                      onclick={() => { youtubePlayer.setPlaybackQuality(quality); showSettings = false; }}
+                      class="w-full text-left px-3 py-2 rounded hover:bg-white/10 transition text-sm"
+                    >
+                      {quality}
+                    </button>
+                  {/each}
+                {/if} -->
+              </div>
+            {/if}
+          </div>
+
+          <button onclick={toggleFullscreen} class="hover:text-purple-400 transition" title="Fullscreen (F)">
+            <Maximize class="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </div>
+
+<style>
+  .fullscreen-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    border-radius: 0;
+  }
+</style>
