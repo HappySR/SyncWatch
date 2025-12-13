@@ -1,3 +1,55 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+:root {
+  --color-primary: #8b5cf6;
+  --color-secondary: #ec4899;
+  --color-surface: rgba(255, 255, 255, 0.05);
+  --color-surface-hover: rgba(255, 255, 255, 0.1);
+  --color-input: rgba(0, 0, 0, 0.3);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgba(255, 255, 255, 0.8);
+  --color-text-muted: rgba(255, 255, 255, 0.4);
+}
+
+.bg-primary {
+  background-color: var(--color-primary);
+}
+
+.bg-secondary {
+  background-color: var(--color-secondary);
+}
+
+.bg-surface {
+  background-color: var(--color-surface);
+}
+
+.bg-surface-hover {
+  background-color: var(--color-surface-hover);
+}
+
+.bg-input {
+  background-color: var(--color-input);
+}
+
+.border-border {
+  border-color: var(--color-border);
+}
+
+.text-text-primary {
+  color: var(--color-text-primary);
+}
+
+.text-text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-text-muted {
+  color: var(--color-text-muted);
+}
+
+.text-primary {
+  color: var(--color-primary);
+}

@@ -24,7 +24,7 @@
     <!-- Hero Section -->
     <div class="space-y-4">
       <div class="flex justify-center">
-        <div class="bg-linear-to-r from-purple-500 to-pink-500 p-4 rounded-2xl">
+        <div class="bg-primary p-4 rounded-2xl">
           <Play class="w-16 h-16 text-white" fill="white" />
         </div>
       </div>
