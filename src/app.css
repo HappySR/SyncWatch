@@ -53,3 +53,33 @@
 .text-primary {
   color: var(--color-primary);
 }
+
+.hover\:bg-primary\/90:hover {
+  background-color: color-mix(in srgb, var(--color-primary) 90%, transparent);
+}
+
+.hover\:bg-secondary\/90:hover {
+  background-color: color-mix(in srgb, var(--color-secondary) 90%, transparent);
+}
+
+.bg-primary\/10 {
+  background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.bg-gradient-to-br {
+  background-image: linear-gradient(to bottom right, var(--tw-gradient-stops));
+}
+
+.from-primary {
+  --tw-gradient-from: var(--color-primary);
+  --tw-gradient-to: rgb(255 255 255 / 0);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+.to-secondary {
+  --tw-gradient-to: var(--color-secondary);
+}
+
+.accent-primary {
+  accent-color: var(--color-primary);
+}

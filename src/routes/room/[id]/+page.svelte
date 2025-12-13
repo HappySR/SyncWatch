@@ -13,6 +13,7 @@
   let roomId = $derived($page.params.id ?? '');
   let loading = $state(true);
   let copied = $state(false);
+  let isVideoFullscreen = $state(false);
 
   onMount(async () => {
     try {
@@ -36,6 +37,10 @@
     setTimeout(() => copied = false, 2000);
   }
 
+  function handleFullscreenChange(fullscreen: boolean) {
+    isVideoFullscreen = fullscreen;
+  }
+
   const currentMember = $derived(
     roomStore.members.find(m => m.user_id === authStore.user?.id)
   );
@@ -53,12 +58,12 @@
   <div class="max-w-450 mx-auto px-4 py-6">
     <div class="mb-6 flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-white mb-2">
+        <h1 class="text-3xl font-bold text-text-primary mb-2">
           {roomStore.currentRoom.name}
         </h1>
         <button
           onclick={copyRoomId}
-          class="flex items-center gap-2 text-white/60 hover:text-white transition text-sm"
+          class="flex items-center gap-2 text-text-secondary hover:text-text-primary transition text-sm"
         >
           {#if copied}
             <Check class="w-4 h-4 text-green-400" />
@@ -79,7 +84,7 @@
 
     <div class="grid lg:grid-cols-[1fr_320px] gap-6">
       <div class="space-y-6">
-        <VideoPlayer />
+        <VideoPlayer onFullscreenChange={handleFullscreenChange} />
         
         {#if currentMember?.has_controls}
           <RoomControls />
@@ -90,7 +95,7 @@
         <UserList {isHost} />
         
         <div class="h-125">
-          <ChatPanel />
+          <ChatPanel isFullscreen={isVideoFullscreen} />
         </div>
       </div>
     </div>

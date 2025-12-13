@@ -3,6 +3,8 @@
   import { onMount, onDestroy } from 'svelte';
   import { Play, Pause, Volume2, VolumeX, Maximize, SkipForward, SkipBack, Settings } from 'lucide-svelte';
 
+  let { onFullscreenChange = () => {} } = $props<{ onFullscreenChange?: (isFullscreen: boolean) => void }>();
+
   let videoElement: HTMLVideoElement | undefined = $state(undefined);
   let youtubePlayer: any;
   let isMuted = $state(false);
@@ -89,7 +91,9 @@
   }
 
   function handleFullscreenChange() {
-    isFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+    const newFullscreenState = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+    isFullscreen = newFullscreenState;
+    onFullscreenChange(newFullscreenState);
   }
 
   function toggleFullscreen() {
@@ -188,7 +192,6 @@
         onStateChange: (event: any) => {
           const YT = (window as any).YT;
           
-          // Don't process if we're syncing from remote
           if (playerStore.isSyncing) return;
           
           if (event.data === YT.PlayerState.PLAYING && !isPlaying) {
@@ -217,13 +220,10 @@
         const ytTime = youtubePlayer.getCurrentTime();
         const duration = youtubePlayer.getDuration();
         
-        // Update duration
         if (duration && duration !== playerStore.duration) {
           playerStore.duration = duration;
         }
         
-        // Detect user seeking on YouTube progress bar
-        // If time jumped more than 2 seconds and we're not syncing
         const timeDiff = Math.abs(ytTime - lastYtTime);
         if (timeDiff > 2 && !playerStore.isSyncing) {
           console.log('YouTube seek detected:', lastYtTime, '→', ytTime);
@@ -245,7 +245,6 @@
         
         console.log('Syncing YouTube:', { isPlaying, currentTime, ytTime, state });
         
-        // Sync time FIRST, then play/pause
         const timeDiff = Math.abs(ytTime - currentTime);
         if (timeDiff > 0.5) {
           console.log('Seeking YouTube to:', currentTime);
@@ -253,7 +252,6 @@
           lastYtTime = currentTime;
         }
         
-        // Then sync play/pause state
         if (isPlaying && state !== 1 && state !== 3) {
           console.log('Starting YouTube playback');
           youtubePlayer.playVideo();
@@ -283,7 +281,6 @@
     }
   });
 
-  // Sync when store updates from remote events
   $effect(() => {
     if (playerStore.isSyncing) {
       syncPlayer();
@@ -291,7 +288,6 @@
   });
 
   function togglePlay() {
-    // Update current time from YouTube before play/pause
     if (videoType === 'youtube' && youtubePlayer && youtubePlayer.getCurrentTime) {
       const ytTime = youtubePlayer.getCurrentTime();
       playerStore.currentTime = ytTime;
@@ -366,7 +362,6 @@
   {:else if videoType === 'youtube'}
     <div id="youtube-player" class="w-full h-full"></div>
     
-    <!-- Fullscreen button for desktop YouTube -->
     {#if !isMobile}
       <button
         onclick={toggleFullscreen}
@@ -377,7 +372,6 @@
       </button>
     {/if}
   {:else}
-    <!-- Direct video with full custom controls -->
     <video
       bind:this={videoElement}
       src={videoUrl}
@@ -431,7 +425,7 @@
           }}
         >
           <div 
-            class="h-full bg-purple-500 rounded-full relative"
+            class="h-full bg-primary rounded-full relative"
             style="width: {(currentTime / playerStore.duration) * 100}%"
           >
             <div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover/progress:opacity-100 transition"></div>
@@ -440,7 +434,7 @@
 
         <div class="flex items-center justify-between text-white">
           <div class="flex items-center gap-4">
-            <button onclick={togglePlay} class="hover:text-purple-400 transition" title="Play/Pause (Space)">
+            <button onclick={togglePlay} class="hover:text-primary transition" title="Play/Pause (Space)">
               {#if isPlaying}
                 <Pause class="w-5 h-5" />
               {:else}
@@ -448,15 +442,15 @@
               {/if}
             </button>
 
-            <button onclick={skipBackward} class="hover:text-purple-400 transition" title="Rewind 10s (←)">
+            <button onclick={skipBackward} class="hover:text-primary transition" title="Rewind 10s (←)">
               <SkipBack class="w-5 h-5" />
             </button>
 
-            <button onclick={skipForward} class="hover:text-purple-400 transition" title="Forward 10s (→)">
+            <button onclick={skipForward} class="hover:text-primary transition" title="Forward 10s (→)">
               <SkipForward class="w-5 h-5" />
             </button>
 
-            <button onclick={toggleMute} class="hover:text-purple-400 transition" title="Mute (M)">
+            <button onclick={toggleMute} class="hover:text-primary transition" title="Mute (M)">
               {#if isMuted}
                 <VolumeX class="w-5 h-5" />
               {:else}
@@ -471,7 +465,7 @@
               step="0.01"
               value={volume}
               oninput={handleVolumeChange}
-              class="w-20 accent-purple-500"
+              class="w-20 accent-primary"
             />
 
             <span class="text-sm">
@@ -483,7 +477,7 @@
             <div class="relative">
               <button 
                 onclick={() => showSettings = !showSettings} 
-                class="hover:text-purple-400 transition"
+                class="hover:text-primary transition"
                 title="Settings"
               >
                 <Settings class="w-5 h-5" />
@@ -495,8 +489,7 @@
                   {#each [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as rate}
                     <button
                       onclick={() => changePlaybackRate(rate)}
-                      class="w-full text-left px-3 py-2 rounded hover:bg-white/10 transition text-sm"
-                      class:bg-purple-500={playbackRate === rate}
+                      class="w-full text-left px-3 py-2 rounded hover:bg-white/10 transition text-sm {playbackRate === rate ? 'bg-primary' : ''}"
                     >
                       {rate}x {rate === 1 ? '(Normal)' : ''}
                     </button>
@@ -505,7 +498,7 @@
               {/if}
             </div>
 
-            <button onclick={toggleFullscreen} class="hover:text-purple-400 transition" title="Fullscreen (F)">
+            <button onclick={toggleFullscreen} class="hover:text-primary transition" title="Fullscreen (F)">
               <Maximize class="w-5 h-5" />
             </button>
           </div>

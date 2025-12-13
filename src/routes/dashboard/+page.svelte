@@ -79,7 +79,7 @@
   <div class="grid md:grid-cols-2 gap-4 mb-12">
     <button
       onclick={() => showCreateModal = true}
-      class="bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white p-6 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center gap-3"
+      class="bg-primary hover:opacity-90 text-white p-6 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center gap-3"
     >
       <Plus class="w-6 h-6" />
       <span class="text-lg font-semibold">Create New Room</span>
@@ -177,7 +177,7 @@
         </button>
         <button
           onclick={createRoom}
-          class="flex-1 bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-3 rounded-lg transition"
+          class="flex-1 bg-primary hover:opacity-90 text-white px-4 py-3 rounded-lg transition"
         >
           Create Room
         </button>

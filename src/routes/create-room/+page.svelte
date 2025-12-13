@@ -104,7 +104,7 @@
         </button>
         <button
           type="submit"
-          class="flex-1 bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-6 py-3 rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          class="flex-1 bg-primary hover:opacity-90 text-white px-6 py-3 rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={loading || !roomName.trim()}
         >
           {loading ? 'Creating...' : 'Create Room'}

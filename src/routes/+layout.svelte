@@ -1,16 +1,22 @@
 <script lang="ts">
   import '../app.css';
   import { authStore } from '$lib/stores/auth.svelte';
+  import { themeStore } from '$lib/stores/theme.svelte';
   import Navbar from '$lib/components/Navbar.svelte';
+  import { onMount } from 'svelte';
 
   const { children } = $props();
+
+  onMount(() => {
+    themeStore.applyTheme();
+  });
 </script>
 
 <svelte:head>
   <title>SyncWatch - Watch Together</title>
 </svelte:head>
 
-<div class="min-h-screen bg-linear-to-br from-slate-900 via-purple-900 to-slate-900">
+<div class="min-h-screen bg-slate-900">
   {#if !authStore.loading}
     {#if authStore.user}
       <Navbar />

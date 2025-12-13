@@ -2,7 +2,7 @@
   import { authStore } from '$lib/stores/auth.svelte';
   import { signOut } from '$lib/supabase';
   import { goto } from '$app/navigation';
-  import { LogOut, Home, Video } from 'lucide-svelte';
+  import { LogOut, Home, Video, Settings } from 'lucide-svelte';
 
   async function handleSignOut() {
     await signOut();
@@ -23,6 +23,11 @@
           <a href="/dashboard" class="text-white/70 hover:text-white transition flex items-center gap-2">
             <Home class="w-4 h-4" />
             Dashboard
+          </a>
+          
+          <a href="/settings" class="text-white/70 hover:text-white transition flex items-center gap-2">
+            <Settings class="w-4 h-4" />
+            Settings
           </a>
         </div>
       </div>
