@@ -18,7 +18,6 @@
     try {
       await roomStore.joinRoom(roomId);
       playerStore.syncWithRoom();
-      window.addEventListener('player-event', handlePlayerEvent as EventListener);
       loading = false;
     } catch (error) {
       console.error('Failed to join room:', error);
@@ -27,13 +26,9 @@
   });
 
   onDestroy(() => {
-    window.removeEventListener('player-event', handlePlayerEvent as EventListener);
     roomStore.leaveRoom();
+    playerStore.cleanup();
   });
-
-  function handlePlayerEvent(e: CustomEvent) {
-    playerStore.handleRemoteEvent(e.detail);
-  }
 
   async function copyRoomId() {
     await navigator.clipboard.writeText(roomId);

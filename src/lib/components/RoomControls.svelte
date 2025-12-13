@@ -68,8 +68,8 @@
   }
 </script>
 
-<div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6">
-  <h3 class="text-white font-semibold text-lg mb-4">Load Video</h3>
+<div class="bg-surface border border-border rounded-xl p-6">
+  <h3 class="text-text-primary font-semibold text-lg mb-4">Load Video</h3>
 
   <div class="space-y-4">
     <div class="flex gap-2">
@@ -78,8 +78,8 @@
         onclick={() => (videoType = 'youtube')}
         class={`flex-1 px-4 py-2 rounded-lg transition flex items-center justify-center gap-2 ${
           videoType === 'youtube'
-            ? 'bg-purple-500 text-white'
-            : 'bg-white/10 text-white/60'
+            ? 'bg-primary text-white'
+            : 'bg-surface-hover text-text-secondary'
         }`}
       >
         <Youtube class="w-4 h-4" />
@@ -91,8 +91,8 @@
         onclick={() => (videoType = 'direct')}
         class={`flex-1 px-4 py-2 rounded-lg transition flex items-center justify-center gap-2 ${
           videoType === 'direct'
-            ? 'bg-purple-500 text-white'
-            : 'bg-white/10 text-white/60'
+            ? 'bg-primary text-white'
+            : 'bg-surface-hover text-text-secondary'
         }`}
       >
         <Link class="w-4 h-4" />
@@ -108,25 +108,25 @@
           videoType === 'youtube' ? 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' :
           'https://example.com/video.mp4'
         }
-        class="w-full bg-black/30 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-purple-500"
+        class="w-full bg-input border border-border rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary"
         onkeydown={(e) => e.key === 'Enter' && handleLoadVideo()}
       />
 
       <button
         onclick={handleLoadVideo}
         type="button"
-        class="w-full bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-4 py-3 rounded-lg transition font-medium"
+        class="w-full bg-linear-to-r from-primary to-secondary hover:from-primary-dark hover:to-secondary-dark text-white px-4 py-3 rounded-lg transition font-medium"
       >
         Load Video
       </button>
     </div>
 
-    <div class="text-xs text-white/40 space-y-1">
+    <div class="text-xs text-text-muted space-y-1">
       {#if videoType === 'youtube'}
         <p>✓ Full URL: https://www.youtube.com/watch?v=VIDEO_ID</p>
         <p>✓ Short URL: https://youtu.be/VIDEO_ID</p>
         <p>✓ Just the ID: VIDEO_ID (11 characters)</p>
-        <p class="mt-2 text-white/60">Note: YouTube quality settings available in player controls</p>
+        <p class="mt-2 text-text-secondary">Note: Use YouTube's native controls for quality & settings</p>
       {:else}
         <p>• Direct links to video files (.mp4, .webm, .ogg)</p>
         <p>• Must be publicly accessible (no login required)</p>

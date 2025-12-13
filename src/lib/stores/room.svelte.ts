@@ -1,5 +1,5 @@
 import { supabase } from '$lib/supabase';
-import type { Room, RoomMember, PlayerEvent } from '$lib/types';
+import type { Room, RoomMember } from '$lib/types';
 import { authStore } from './auth.svelte';
 
 class RoomStore {
@@ -9,7 +9,6 @@ class RoomStore {
   error = $state<string | null>(null);
   
   private roomChannel: any = null;
-  private eventsChannel: any = null;
 
   async createRoom(name: string) {
     if (!authStore.user) throw new Error('Not authenticated');
@@ -23,14 +22,18 @@ class RoomStore {
         .insert({
           name,
           host_id: authStore.user.id,
-          is_public: true
+          is_public: true,
+          current_video_url: null,
+          current_video_type: null,
+          video_time: 0,
+          is_playing: false
         })
         .select()
         .single();
 
       if (roomError) throw roomError;
 
-      // Add creator as member
+      // Add creator as member with controls
       const { error: memberError } = await supabase
         .from('room_members')
         .insert({
@@ -66,6 +69,7 @@ class RoomStore {
         .single();
 
       if (!existing) {
+        // Add as member with controls enabled by default
         const { error } = await supabase
           .from('room_members')
           .insert({
@@ -116,21 +120,22 @@ class RoomStore {
   subscribeToRoom(roomId: string) {
     this.unsubscribe();
 
-    // Subscribe to room updates
+    console.log('Subscribing to room updates:', roomId);
+
+    // Subscribe to room updates and member changes
     this.roomChannel = supabase
       .channel(`room:${roomId}`)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
           table: 'rooms',
           filter: `id=eq.${roomId}`
         },
         (payload) => {
-          if (payload.eventType === 'UPDATE') {
-            this.currentRoom = payload.new as Room;
-          }
+          console.log('Room updated:', payload.new);
+          this.currentRoom = payload.new as Room;
         }
       )
       .on(
@@ -142,48 +147,13 @@ class RoomStore {
           filter: `room_id=eq.${roomId}`
         },
         () => {
+          console.log('Members changed, reloading...');
           this.loadMembers(roomId);
         }
       )
-      .subscribe();
-
-    // Subscribe to player events
-    this.eventsChannel = supabase
-      .channel(`events:${roomId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'player_events',
-          filter: `room_id=eq.${roomId}`
-        },
-        (payload) => {
-          const event = payload.new as PlayerEvent;
-          // This will be handled by player store
-          window.dispatchEvent(new CustomEvent('player-event', { detail: event }));
-        }
-      )
-      .subscribe();
-  }
-
-  async updateRoomState(updates: {
-    videoUrl?: string;
-    videoType?: 'youtube' | 'direct' | 'drive';
-    videoTime?: number;
-    isPlaying?: boolean;
-  }) {
-    if (!this.currentRoom) return;
-
-    const { error } = await supabase.rpc('update_room_state', {
-      p_room_id: this.currentRoom.id,
-      p_video_url: updates.videoUrl,
-      p_video_type: updates.videoType,
-      p_video_time: updates.videoTime,
-      p_is_playing: updates.isPlaying
-    });
-
-    if (error) console.error('Failed to update room state:', error);
+      .subscribe((status) => {
+        console.log('Room channel status:', status);
+      });
   }
 
   async toggleMemberControls(memberId: string, hasControls: boolean) {
@@ -192,17 +162,16 @@ class RoomStore {
       .update({ has_controls: hasControls })
       .eq('id', memberId);
 
-    if (error) console.error('Failed to update member controls:', error);
+    if (error) {
+      console.error('Failed to update member controls:', error);
+      throw error;
+    }
   }
 
   unsubscribe() {
     if (this.roomChannel) {
       supabase.removeChannel(this.roomChannel);
       this.roomChannel = null;
-    }
-    if (this.eventsChannel) {
-      supabase.removeChannel(this.eventsChannel);
-      this.eventsChannel = null;
     }
   }
 
