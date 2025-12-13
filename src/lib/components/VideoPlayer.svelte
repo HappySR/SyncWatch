@@ -380,7 +380,7 @@
   {/if}
     
   <div 
-    class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 pointer-events-none"
+    class="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 pointer-events-none"
     class:opacity-0={!showControls && isPlaying && !isMobile}
     class:opacity-100={showControls || !isPlaying || isMobile}
     class:hidden={isMobile && videoType === 'youtube'}
@@ -458,7 +458,7 @@
             class="w-20 accent-purple-500"
           />
 
-          <span class="text-sm">
+          <span class="text-sm" class:text-xs={isMobile} class:w-full={isMobile} class:text-center={isMobile}>
             {formatTime(currentTime)} / {formatTime(playerStore.duration)}
           </span>
         </div>
@@ -474,7 +474,12 @@
             </button>
 
             {#if showSettings}
-              <div class="absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg p-2 min-w-[150px]">
+              <div
+                class="absolute bottom-full mb-2 bg-black/90 backdrop-blur-sm rounded-lg p-2 max-h-[60vh] overflow-y-auto
+                  {isMobile
+                    ? 'left-0.5 -translate-x-0.5 min-w-50'
+                    : 'right-0 min-w-37.5'}"
+              >
                 <div class="text-xs text-white/60 mb-2 px-2">Playback Speed</div>
                 {#each [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as rate}
                   <button
@@ -521,5 +526,21 @@
     height: 100vh;
     z-index: 9999;
     border-radius: 0;
+  }
+  
+  /* Touch-friendly buttons on mobile */
+  @media (max-width: 768px) {
+    button {
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+  
+  /* Prevent double-tap zoom on buttons */
+  .touch-manipulation {
+    touch-action: manipulation;
   }
 </style>
