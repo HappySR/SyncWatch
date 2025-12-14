@@ -9,6 +9,8 @@ class RoomStore {
   error = $state<string | null>(null);
   
   private roomChannel: any = null;
+  private presenceChannel: any = null;
+  private heartbeatInterval: any = null;
 
   async createRoom(name: string) {
     if (!authStore.user) throw new Error('Not authenticated');
@@ -83,6 +85,7 @@ class RoomStore {
 
       await this.loadRoom(roomId);
       this.subscribeToRoom(roomId);
+      this.startPresenceTracking(roomId);
     } catch (err: any) {
       this.error = err.message;
       throw err;
@@ -117,8 +120,85 @@ class RoomStore {
     this.members = data || [];
   }
 
+  startPresenceTracking(roomId: string) {
+    if (this.presenceChannel) {
+      supabase.removeChannel(this.presenceChannel);
+    }
+
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+
+    console.log('Starting presence tracking for room:', roomId);
+
+    // Create presence channel
+    this.presenceChannel = supabase.channel(`presence:${roomId}`, {
+      config: {
+        presence: {
+          key: authStore.user?.id || '',
+        },
+      },
+    });
+
+    // Track presence state
+    this.presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = this.presenceChannel.presenceState();
+        console.log('Presence sync:', state);
+        this.updateMembersFromPresence(state);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
+        console.log('User joined:', key, newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
+        console.log('User left:', key, leftPresences);
+      })
+      .subscribe(async (status: any) => {
+        console.log('Presence channel status:', status);
+        if (status === 'SUBSCRIBED') {
+          // Track this user's presence
+          await this.presenceChannel.track({
+            user_id: authStore.user?.id,
+            online_at: new Date().toISOString(),
+          });
+        }
+      });
+
+    // Send heartbeat every 30 seconds
+    this.heartbeatInterval = setInterval(async () => {
+      if (this.presenceChannel) {
+        await this.presenceChannel.track({
+          user_id: authStore.user?.id,
+          online_at: new Date().toISOString(),
+        });
+      }
+    }, 30000);
+  }
+
+  updateMembersFromPresence(presenceState: any) {
+    const onlineUserIds = new Set<string>();
+    
+    Object.keys(presenceState).forEach(key => {
+      const presences = presenceState[key];
+      presences.forEach((presence: any) => {
+        if (presence.user_id) {
+          onlineUserIds.add(presence.user_id);
+        }
+      });
+    });
+
+    // Filter members to only show online users
+    this.members = this.members.filter(member => 
+      onlineUserIds.has(member.user_id)
+    );
+
+    console.log('Online members:', this.members.length, 'out of', onlineUserIds.size);
+  }
+
   subscribeToRoom(roomId: string) {
-    this.unsubscribe();
+    if (this.roomChannel) {
+      supabase.removeChannel(this.roomChannel);
+    }
 
     console.log('Subscribing to room updates:', roomId);
 
@@ -172,6 +252,17 @@ class RoomStore {
     if (this.roomChannel) {
       supabase.removeChannel(this.roomChannel);
       this.roomChannel = null;
+    }
+
+    if (this.presenceChannel) {
+      this.presenceChannel.untrack();
+      supabase.removeChannel(this.presenceChannel);
+      this.presenceChannel = null;
+    }
+
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
   }
 

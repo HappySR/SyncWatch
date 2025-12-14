@@ -86,9 +86,7 @@
       <div class="space-y-6">
         <VideoPlayer onFullscreenChange={handleFullscreenChange} />
         
-        {#if currentMember?.has_controls}
-          <RoomControls />
-        {/if}
+        <RoomControls />
       </div>
 
       <div class="space-y-6">

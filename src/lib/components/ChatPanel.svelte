@@ -4,7 +4,7 @@
   import { settingsStore } from '$lib/stores/settings.svelte';
   import { supabase } from '$lib/supabase';
   import { onMount, onDestroy } from 'svelte';
-  import { Send, Mic, MicOff, Video, VideoOff, Phone, PhoneOff, Minimize2 } from 'lucide-svelte';
+  import { Send, Mic, MicOff, Video, VideoOff, Phone, PhoneOff, Minimize2, PhoneIncoming } from 'lucide-svelte';
 
   let { isFullscreen = false } = $props<{ isFullscreen?: boolean }>();
 
@@ -20,22 +20,39 @@
     };
   }
 
+  interface CallInvitation {
+    from: string;
+    fromName: string;
+    timestamp: number;
+  }
+
   let messages = $state<ChatMessage[]>([]);
   let newMessage = $state('');
-  let chatContainer: HTMLDivElement | undefined;
+  let chatContainer: HTMLDivElement | undefined = $state(undefined);
   let channel: any;
 
   // WebRTC state
-  let localStream: MediaStream | null = null;
+  let localStream: MediaStream | null = $state(null);
   let peerConnections = $state<Map<string, RTCPeerConnection>>(new Map());
   let remoteStreams = $state<Map<string, MediaStream>>(new Map());
   let isMicOn = $state(false);
   let isVideoOn = $state(false);
   let isInCall = $state(false);
-  let localVideoElement: HTMLVideoElement | undefined;
-  let remoteVideosContainer: HTMLDivElement | undefined;
+  let localVideoElement: HTMLVideoElement | undefined = $state(undefined);
+  let remoteVideosContainer: HTMLDivElement | undefined = $state(undefined);
   let activeSpeaker = $state<string | null>(null);
   let isMinimized = $state(false);
+  let incomingCall = $state<CallInvitation | null>(null);
+  let usersInCall = $state<Set<string>>(new Set());
+
+  // ICE server configuration
+  const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
+  ];
 
   onMount(async () => {
     await loadMessages();
@@ -102,7 +119,23 @@
         }
       )
       .on('broadcast', { event: 'webrtc-signal' }, handleWebRTCSignal)
-      .subscribe();
+      .on('broadcast', { event: 'call-invitation' }, handleCallInvitation)
+      .on('broadcast', { event: 'call-status' }, handleCallStatus)
+      .on('broadcast', { event: 'request-call-status' }, handleCallStatusRequest)
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // When someone joins, request current call status
+          if (channel) {
+            channel.send({
+              type: 'broadcast',
+              event: 'request-call-status',
+              payload: {
+                requesterId: authStore.user?.id
+              }
+            });
+          }
+        }
+      });
   }
 
   async function sendMessage() {
@@ -138,6 +171,30 @@
 
   async function startCall() {
     try {
+      // Send call invitation to all members
+      if (channel) {
+        const invitationPayload = {
+          from: authStore.user?.id,
+          fromName: authStore.profile?.display_name || authStore.user?.email || 'Someone',
+          timestamp: Date.now()
+        };
+
+        await channel.send({
+          type: 'broadcast',
+          event: 'call-invitation',
+          payload: invitationPayload
+        });
+      }
+
+      await joinCall();
+    } catch (error) {
+      console.error('Error starting call:', error);
+      alert('Could not start call. Please check permissions.');
+    }
+  }
+
+  async function joinCall() {
+    try {
       localStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: {
@@ -149,8 +206,12 @@
       isMicOn = true;
       isVideoOn = true;
       isInCall = true;
+      incomingCall = null;
 
-      // Wait for the next tick to ensure DOM is updated
+      // Add self to users in call
+      usersInCall.add(authStore.user?.id || '');
+
+      // Wait for DOM update
       await new Promise(resolve => setTimeout(resolve, 100));
 
       if (localVideoElement && localStream) {
@@ -164,11 +225,23 @@
         }
       }
 
-      // Monitor audio levels for active speaker detection
+      // Monitor audio levels
       monitorAudioLevels(localStream, authStore.user?.id || '');
 
+      // Broadcast that user joined call
       if (channel) {
-        channel.send({
+        await channel.send({
+          type: 'broadcast',
+          event: 'call-status',
+          payload: {
+            type: 'user-joined-call',
+            userId: authStore.user?.id,
+            userName: authStore.profile?.display_name || authStore.user?.email
+          }
+        });
+
+        // Also send WebRTC signal for existing peers
+        await channel.send({
           type: 'broadcast',
           event: 'webrtc-signal',
           payload: {
@@ -178,15 +251,92 @@
         });
       }
 
-      roomStore.members.forEach(member => {
-        if (member.user_id !== authStore.user?.id) {
-          createPeerConnection(member.user_id);
+      // Create peer connections with other users in call
+      usersInCall.forEach(userId => {
+        if (userId !== authStore.user?.id) {
+          createPeerConnection(userId);
         }
       });
     } catch (error) {
-      console.error('Error accessing media devices:', error);
+      console.error('Error joining call:', error);
       alert('Could not access camera/microphone. Please check permissions.');
+      isInCall = false;
     }
+  }
+
+  function handleCallInvitation(payload: any) {
+    const invitation = payload.payload as CallInvitation;
+    
+    // Don't show invitation to self
+    if (invitation.from === authStore.user?.id) return;
+    
+    // Don't show if already in call
+    if (isInCall) return;
+
+    // Show incoming call notification
+    incomingCall = invitation;
+
+    // Auto-dismiss after 30 seconds
+    setTimeout(() => {
+      if (incomingCall?.timestamp === invitation.timestamp) {
+        incomingCall = null;
+      }
+    }, 30000);
+  }
+
+  function handleCallStatus(payload: any) {
+    const status = payload.payload;
+
+    switch (status.type) {
+      case 'user-joined-call':
+        if (status.userId !== authStore.user?.id) {
+          usersInCall.add(status.userId);
+          usersInCall = new Set(usersInCall); // Trigger reactivity
+          
+          // If we're in call, create peer connection
+          if (isInCall) {
+            createPeerConnection(status.userId);
+          }
+        }
+        break;
+
+      case 'user-left-call':
+        usersInCall.delete(status.userId);
+        usersInCall = new Set(usersInCall); // Trigger reactivity
+        
+        // Clean up peer connection
+        const existingPc = peerConnections.get(status.userId);
+        if (existingPc) {
+          existingPc.close();
+          peerConnections.delete(status.userId);
+        }
+        remoteStreams.delete(status.userId);
+        
+        const videoEl = document.getElementById(`remote-${status.userId}`);
+        if (videoEl) videoEl.remove();
+        break;
+    }
+  }
+
+  function handleCallStatusRequest(payload: any) {
+    const request = payload.payload;
+    
+    // If we're in a call and someone just joined, send them an invitation
+    if (isInCall && request.requesterId !== authStore.user?.id && channel) {
+      channel.send({
+        type: 'broadcast',
+        event: 'call-invitation',
+        payload: {
+          from: authStore.user?.id,
+          fromName: authStore.profile?.display_name || authStore.user?.email || 'Someone',
+          timestamp: Date.now()
+        }
+      });
+    }
+  }
+
+  function declineCall() {
+    incomingCall = null;
   }
 
   function endCall() {
@@ -204,7 +354,19 @@
     isInCall = false;
     activeSpeaker = null;
 
+    // Remove self from users in call
+    usersInCall.delete(authStore.user?.id || '');
+
     if (channel) {
+      channel.send({
+        type: 'broadcast',
+        event: 'call-status',
+        payload: {
+          type: 'user-left-call',
+          userId: authStore.user?.id
+        }
+      });
+
       channel.send({
         type: 'broadcast',
         event: 'webrtc-signal',
@@ -213,6 +375,11 @@
           userId: authStore.user?.id
         }
       });
+    }
+
+    // Clean up remote videos
+    if (remoteVideosContainer) {
+      remoteVideosContainer.innerHTML = '';
     }
   }
 
@@ -237,69 +404,77 @@
   }
 
   function monitorAudioLevels(stream: MediaStream, userId: string) {
-    const audioContext = new AudioContext();
-    const analyser = audioContext.createAnalyser();
-    const microphone = audioContext.createMediaStreamSource(stream);
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    try {
+      const audioContext = new AudioContext();
+      const analyser = audioContext.createAnalyser();
+      const microphone = audioContext.createMediaStreamSource(stream);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-    analyser.smoothingTimeConstant = 0.8;
-    analyser.fftSize = 1024;
-    microphone.connect(analyser);
+      analyser.smoothingTimeConstant = 0.8;
+      analyser.fftSize = 1024;
+      microphone.connect(analyser);
 
-    function checkAudioLevel() {
-      if (!isInCall) return;
+      function checkAudioLevel() {
+        if (!isInCall) {
+          audioContext.close();
+          return;
+        }
 
-      analyser.getByteFrequencyData(dataArray);
-      const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        analyser.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
 
-      if (average > 30) {
-        activeSpeaker = userId;
+        if (average > 30) {
+          activeSpeaker = userId;
+        }
+
+        requestAnimationFrame(checkAudioLevel);
       }
 
-      requestAnimationFrame(checkAudioLevel);
+      checkAudioLevel();
+    } catch (error) {
+      console.error('Error monitoring audio:', error);
     }
-
-    checkAudioLevel();
   }
 
   async function createPeerConnection(userId: string) {
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    });
+    // Prevent duplicate connections
+    if (peerConnections.has(userId)) {
+      console.log('Peer connection already exists for:', userId);
+      return;
+    }
+
+    const peerConnection = new RTCPeerConnection({ iceServers });
 
     if (localStream) {
       localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream!);
+        peerConnection.addTrack(track, localStream!);
       });
     }
 
-    pc.ontrack = (event) => {
+    peerConnection.ontrack = (event) => {
+      console.log('Received remote track from:', userId);
       remoteStreams.set(userId, event.streams[0]);
       monitorAudioLevels(event.streams[0], userId);
       
-      const remoteVideo = document.createElement('video');
-      remoteVideo.srcObject = event.streams[0];
-      remoteVideo.autoplay = true;
-      remoteVideo.playsInline = true;
-      remoteVideo.muted = false;
-      remoteVideo.className = 'w-full h-32 object-cover rounded-lg bg-black';
-      remoteVideo.id = `remote-${userId}`;
-      
-      // Ensure video plays
-      remoteVideo.play().catch(e => console.log('Remote video play error:', e));
-      
       if (remoteVideosContainer) {
-        const existing = document.getElementById(`remote-${userId}`);
-        if (existing) existing.remove();
+        let remoteVideo = document.getElementById(`remote-${userId}`) as HTMLVideoElement;
         
-        remoteVideosContainer.appendChild(remoteVideo);
+        if (!remoteVideo) {
+          remoteVideo = document.createElement('video');
+          remoteVideo.id = `remote-${userId}`;
+          remoteVideo.autoplay = true;
+          remoteVideo.playsInline = true;
+          remoteVideo.muted = false;
+          remoteVideo.className = 'w-full h-32 object-cover rounded-lg bg-black';
+          remoteVideosContainer.appendChild(remoteVideo);
+        }
+        
+        remoteVideo.srcObject = event.streams[0];
+        remoteVideo.play().catch(e => console.log('Remote video play error:', e));
       }
     };
 
-    pc.onicecandidate = (event) => {
+    peerConnection.onicecandidate = (event) => {
       if (event.candidate && channel) {
         channel.send({
           type: 'broadcast',
@@ -314,22 +489,35 @@
       }
     };
 
-    peerConnections.set(userId, pc);
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', peerConnection.iceConnectionState);
+      if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
+        console.log('Connection lost with:', userId);
+      }
+    };
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    peerConnections.set(userId, peerConnection);
 
-    if (channel) {
-      channel.send({
-        type: 'broadcast',
-        event: 'webrtc-signal',
-        payload: {
-          type: 'offer',
-          offer,
-          to: userId,
-          from: authStore.user?.id
-        }
-      });
+    try {
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      if (channel) {
+        await channel.send({
+          type: 'broadcast',
+          event: 'webrtc-signal',
+          payload: {
+            type: 'offer',
+            offer,
+            to: userId,
+            from: authStore.user?.id
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error creating offer:', error);
+      peerConnection.close();
+      peerConnections.delete(userId);
     }
   }
 
@@ -339,62 +527,68 @@
     if (from === authStore.user?.id) return;
     if (to && to !== authStore.user?.id) return;
 
-    switch (type) {
-      case 'user-joined':
-        if (isInCall && userId !== authStore.user?.id) {
-          createPeerConnection(userId);
-        }
-        break;
+    try {
+      switch (type) {
+        case 'user-joined':
+          if (isInCall && userId !== authStore.user?.id) {
+            createPeerConnection(userId);
+          }
+          break;
 
-      case 'user-left':
-        const pc = peerConnections.get(userId);
-        if (pc) {
-          pc.close();
-          peerConnections.delete(userId);
-          remoteStreams.delete(userId);
-          const videoEl = document.getElementById(`remote-${userId}`);
-          if (videoEl) videoEl.remove();
-        }
-        break;
+        case 'user-left':
+          const leftPc = peerConnections.get(userId);
+          if (leftPc) {
+            leftPc.close();
+            peerConnections.delete(userId);
+            remoteStreams.delete(userId);
+            const videoEl = document.getElementById(`remote-${userId}`);
+            if (videoEl) videoEl.remove();
+          }
+          break;
 
-      case 'offer':
-        if (!peerConnections.has(from)) {
-          const pc = new RTCPeerConnection({
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-          });
+        case 'offer':
+          if (!isInCall) return; // Only respond if we're in call
+          
+          let existingOfferPc = peerConnections.get(from);
+          
+          if (existingOfferPc) {
+            // Close existing connection
+            existingOfferPc.close();
+            peerConnections.delete(from);
+          }
+
+          const newPeerConnection = new RTCPeerConnection({ iceServers });
 
           if (localStream) {
             localStream.getTracks().forEach(track => {
-              pc.addTrack(track, localStream!);
+              newPeerConnection.addTrack(track, localStream!);
             });
           }
 
-          pc.ontrack = (event) => {
-            remoteStreams.set(userId, event.streams[0]);
-            monitorAudioLevels(event.streams[0], userId);
-            
-            const remoteVideo = document.createElement('video');
-            remoteVideo.srcObject = event.streams[0];
-            remoteVideo.autoplay = true;
-            remoteVideo.playsInline = true;
-            remoteVideo.muted = false;
-            remoteVideo.className = 'w-full h-32 object-cover rounded-lg bg-black';
-            remoteVideo.id = `remote-${from}`;
-            
-            // Ensure video plays
-            remoteVideo.play().catch(e => console.log('Remote video play error:', e));
+          newPeerConnection.ontrack = (event) => {
+            console.log('Received remote track from:', from);
+            remoteStreams.set(from, event.streams[0]);
+            monitorAudioLevels(event.streams[0], from);
             
             if (remoteVideosContainer) {
-              const existing = document.getElementById(`remote-${from}`);
-              if (existing) existing.remove();
-              remoteVideosContainer.appendChild(remoteVideo);
+              let remoteVideo = document.getElementById(`remote-${from}`) as HTMLVideoElement;
+              
+              if (!remoteVideo) {
+                remoteVideo = document.createElement('video');
+                remoteVideo.id = `remote-${from}`;
+                remoteVideo.autoplay = true;
+                remoteVideo.playsInline = true;
+                remoteVideo.muted = false;
+                remoteVideo.className = 'w-full h-32 object-cover rounded-lg bg-black';
+                remoteVideosContainer.appendChild(remoteVideo);
+              }
+              
+              remoteVideo.srcObject = event.streams[0];
+              remoteVideo.play().catch(e => console.log('Remote video play error:', e));
             }
           };
 
-          pc.onicecandidate = (event) => {
+          newPeerConnection.onicecandidate = (event) => {
             if (event.candidate && channel) {
               channel.send({
                 type: 'broadcast',
@@ -409,52 +603,83 @@
             }
           };
 
-          peerConnections.set(from, pc);
+          peerConnections.set(from, newPeerConnection);
 
-          await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
+          await newPeerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+          const answerDesc = await newPeerConnection.createAnswer();
+          await newPeerConnection.setLocalDescription(answerDesc);
 
           if (channel) {
-            channel.send({
+            await channel.send({
               type: 'broadcast',
               event: 'webrtc-signal',
               payload: {
                 type: 'answer',
-                answer,
+                answer: answerDesc,
                 to: from,
                 from: authStore.user?.id
               }
             });
           }
-        }
-        break;
+          break;
 
-      case 'answer':
-        const existingPc = peerConnections.get(from);
-        if (existingPc) {
-          await existingPc.setRemoteDescription(new RTCSessionDescription(answer));
-        }
-        break;
+        case 'answer':
+          const answerPc = peerConnections.get(from);
+          if (answerPc) {
+            await answerPc.setRemoteDescription(new RTCSessionDescription(answer));
+          }
+          break;
 
-      case 'ice-candidate':
-        const targetPc = peerConnections.get(from);
-        if (targetPc && candidate) {
-          await targetPc.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-        break;
+        case 'ice-candidate':
+          const candidatePc = peerConnections.get(from);
+          if (candidatePc && candidate) {
+            await candidatePc.addIceCandidate(new RTCIceCandidate(candidate));
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('Error handling WebRTC signal:', error);
     }
   }
 </script>
+
+<!-- Incoming Call Notification -->
+{#if incomingCall && !isInCall}
+  <div class="fixed top-20 right-4 z-50 bg-surface border-2 border-primary rounded-xl p-4 shadow-2xl animate-bounce">
+    <div class="flex items-center gap-3 mb-3">
+      <div class="bg-primary rounded-full p-2">
+        <PhoneIncoming class="w-5 h-5 text-black" />
+      </div>
+      <div>
+        <div class="text-text-primary font-semibold">Incoming Video Call</div>
+        <div class="text-text-secondary text-sm">{incomingCall.fromName}</div>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button
+        onclick={joinCall}
+        class="flex-1 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg transition text-sm font-medium"
+      >
+        Join
+      </button>
+      <button
+        onclick={declineCall}
+        class="flex-1 bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg transition text-sm font-medium"
+      >
+        Decline
+      </button>
+    </div>
+  </div>
+{/if}
 
 {#if isFullscreen && isInCall}
   <!-- Fullscreen Video Call Overlay -->
   <div class="fixed bottom-4 right-4 z-50 transition-all duration-300 {isMinimized ? 'w-20' : 'w-80'}">
     <div class="bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/20">
       {#if !isMinimized}
-        <div class="p-3">
+        <div class="p-3 relative">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-white text-sm font-medium">Video Call</span>
+            <span class="text-white text-sm font-medium">Video Call ({usersInCall.size})</span>
             <button
               onclick={() => isMinimized = true}
               class="text-white/60 hover:text-white transition"
@@ -463,33 +688,57 @@
             </button>
           </div>
 
-          <!-- Active Speaker or First Remote Video -->
-          {#if activeSpeaker && activeSpeaker !== authStore.user?.id}
-            {@const activeStream = remoteStreams.get(activeSpeaker)}
-            {#if activeStream}
+          <!-- Show Remote Videos First (Priority) -->
+          {#if remoteStreams.size > 0}
+            {#if activeSpeaker && activeSpeaker !== authStore.user?.id}
+              {@const activeStream = remoteStreams.get(activeSpeaker)}
+              {#if activeStream}
+                <video
+                  srcObject={activeStream}
+                  autoplay
+                  playsinline
+                  class="w-full h-40 object-cover rounded-lg bg-black mb-2"
+                ></video>
+                <div class="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-white text-xs">
+                  Speaking
+                </div>
+              {:else}
+                {@const firstRemote = Array.from(remoteStreams.values())[0]}
+                <video
+                  srcObject={firstRemote}
+                  autoplay
+                  playsinline
+                  class="w-full h-40 object-cover rounded-lg bg-black mb-2"
+                ></video>
+              {/if}
+            {:else}
+              {@const firstRemote = Array.from(remoteStreams.values())[0]}
               <video
-                srcObject={activeStream}
+                srcObject={firstRemote}
                 autoplay
                 playsinline
                 class="w-full h-40 object-cover rounded-lg bg-black mb-2"
               ></video>
             {/if}
-          {:else if remoteStreams.size > 0}
-            {@const firstRemote = Array.from(remoteStreams.values())[0]}
+            
+            <!-- Show local video as small pip -->
             <video
-              srcObject={firstRemote}
+              srcObject={localStream || undefined}
               autoplay
+              muted
               playsinline
-              class="w-full h-40 object-cover rounded-lg bg-black mb-2"
+              class="absolute top-2 right-2 w-20 h-20 object-cover rounded-lg bg-black border-2 border-white/20"
+              style="transform: scaleX(-1);"
             ></video>
           {:else}
-            <!-- Show local video if no remotes -->
+            <!-- Show local video full if no remotes -->
             <video
-              bind:this={localVideoElement}
+              srcObject={localStream || undefined}
               autoplay
               muted
               playsinline
               class="w-full h-40 object-cover rounded-lg bg-black mb-2"
+              style="transform: scaleX(-1);"
             ></video>
           {/if}
 
@@ -585,18 +834,19 @@
         </button>
       {:else}
         <div class="space-y-3">
+          <div class="text-text-secondary text-sm text-center">
+            {usersInCall.size} {usersInCall.size === 1 ? 'person' : 'people'} in call
+          </div>
+
           <div class="relative">
             <video
               bind:this={localVideoElement}
+              srcObject={localStream || undefined}
               autoplay
               muted
               playsinline
               class="w-full h-48 object-cover rounded-lg bg-black"
               style="transform: scaleX(-1);"
-              onloadedmetadata={(e) => {
-                console.log('Local video metadata loaded');
-                e.currentTarget.play().catch(err => console.log('Play error:', err));
-              }}
             ></video>
             <div class="absolute bottom-2 left-2 bg-black/60 px-2 py-1 rounded text-white text-xs">
               You
@@ -656,7 +906,7 @@
                   class="w-8 h-8 rounded-full"
                 />
               {:else}
-                <div class="w-8 h-8 rounded-full bg-linear-to-br from-primary to-secondary flex items-center justify-center text-white text-xs font-bold">
+                <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">
                   {(message.profiles?.display_name?.[0] || '?').toUpperCase()}
                 </div>
               {/if}
@@ -673,8 +923,8 @@
               </div>
               <div 
                 class="px-3 py-2 rounded-lg text-sm {isOwnMessage
-                  ? 'bg-primary text-white'
-                  : 'bg-surface-hover text-text-primary'}"
+                ? 'bg-primary text-white'
+                : 'bg-surface-hover text-text-primary'}"
               >
                 {message.message}
               </div>
@@ -683,7 +933,6 @@
         {/each}
       {/if}
     </div>
-
     <div class="p-4 border-t border-border">
       <form onsubmit={(e) => { e.preventDefault(); sendMessage(); }} class="flex gap-2">
         <input

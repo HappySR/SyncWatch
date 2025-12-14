@@ -5,11 +5,17 @@
   import { LogOut, Video, Settings } from 'lucide-svelte';
   import { onMount, onDestroy } from 'svelte';
 
-  let showMenu = false;
-  let menuRef: HTMLDivElement | undefined;
+  let showMenu = $state(false);
+  let menuRef: HTMLDivElement | undefined = $state(undefined);
+  let buttonRef: HTMLButtonElement | undefined = $state(undefined);
 
   function handleClickOutside(event: MouseEvent) {
-    if (!menuRef?.contains(event.target as Node)) {
+    if (
+      menuRef && 
+      buttonRef && 
+      !menuRef.contains(event.target as Node) && 
+      !buttonRef.contains(event.target as Node)
+    ) {
       showMenu = false;
     }
   }
@@ -45,6 +51,7 @@
 
       <div class="relative">
         <button
+          bind:this={buttonRef}
           onclick={toggleMenu}
           class="flex items-center gap-3 focus:outline-none"
         >
@@ -63,23 +70,35 @@
           <span class="hidden md:block text-white/70 text-sm">
             {authStore.profile?.display_name || authStore.profile?.email}
           </span>
+
+          <!-- Dropdown arrow -->
+          <svg 
+            class="w-4 h-4 text-white/70 transition-transform {showMenu ? 'rotate-180' : ''}" 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
         </button>
 
         {#if showMenu}
           <div
-            class="absolute right-0 mt-2 w-40 bg-black/80 backdrop-blur border border-white/10 rounded-lg shadow-lg z-50"
+            bind:this={menuRef}
+            class="absolute right-0 mt-2 w-48 bg-black/90 backdrop-blur border border-white/10 rounded-lg shadow-lg z-50 overflow-hidden"
           >
             <a
               href="/settings"
-              class="flex items-center gap-2 px-4 py-2 text-white/70 hover:text-white"
+              class="flex items-center gap-2 px-4 py-3 text-white/70 hover:text-white hover:bg-white/5 transition"
+              onclick={() => showMenu = false}
             >
               <Settings class="w-4 h-4" />
               Settings
             </a>
 
             <button
-              onclick={handleSignOut}
-              class="w-full flex items-center gap-2 px-4 py-2 text-white/70 hover:text-white"
+              onclick={() => { handleSignOut(); showMenu = false; }}
+              class="w-full flex items-center gap-2 px-4 py-3 text-white/70 hover:text-white hover:bg-white/5 transition text-left"
             >
               <LogOut class="w-4 h-4" />
               Sign Out
