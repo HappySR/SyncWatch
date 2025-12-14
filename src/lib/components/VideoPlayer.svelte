@@ -154,8 +154,9 @@
           playerStore.duration = duration;
         }
         
+        // Only detect intentional seeks (jumps > 3 seconds)
         const timeDiff = Math.abs(ytTime - lastYtTime);
-        if (timeDiff > 2 && !playerStore.isSyncing) {
+        if (timeDiff > 3 && !playerStore.isSyncing) {
           console.log('YouTube seek detected:', lastYtTime, '→', ytTime);
           playerStore.seek(ytTime);
         }
@@ -169,7 +170,7 @@
       } catch (e) {
         console.log('YouTube monitoring error:', e);
       }
-    }, 300);
+    }, 1000); // Changed from 300ms to 1000ms for smoother experience
   }
 
   function syncPlayer() {
@@ -180,8 +181,9 @@
         
         console.log('Syncing YouTube:', { isPlaying, currentTime, ytTime, state });
         
+        // Only sync if difference is significant (>2 seconds) to avoid jitter
         const timeDiff = Math.abs(ytTime - currentTime);
-        if (timeDiff > 0.5) {
+        if (timeDiff > 2) {
           console.log('Seeking YouTube to:', currentTime);
           youtubePlayer.seekTo(currentTime, true);
           lastYtTime = currentTime;
@@ -198,7 +200,7 @@
         console.log('Sync error:', e);
       }
     } else if (videoType === 'direct' && videoElement) {
-      if (Math.abs(videoElement.currentTime - currentTime) > 0.5) {
+      if (Math.abs(videoElement.currentTime - currentTime) > 1) {
         videoElement.currentTime = currentTime;
       }
       
@@ -270,7 +272,7 @@
   bind:this={containerElement}
   role="region"
   aria-label="Video player"
-  class="relative bg-black rounded-xl overflow-hidden aspect-video"
+  class="relative bg-black rounded-xl overflow-hidden aspect-video group"
   class:fullscreen-container={isFullscreen}
 >
   {#if !videoUrl}
@@ -282,10 +284,12 @@
   {:else if videoType === 'youtube'}
     <div id="youtube-player" class="w-full h-full"></div>
     
+    <!-- Fullscreen button - hidden by default, shows on hover/touch -->
     <button
       onclick={toggleFullscreen}
-      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-10"
+      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-10 opacity-0 group-hover:opacity-100 focus:opacity-100 md:opacity-100"
       title="Toggle Fullscreen"
+      aria-label="Toggle Fullscreen"
     >
       {#if isFullscreen}
         <Minimize class="w-5 h-5" />
@@ -322,10 +326,12 @@
       <track kind="captions" />
     </video>
     
+    <!-- Fullscreen button - hidden by default, shows on hover/touch -->
     <button
       onclick={toggleFullscreen}
-      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-10"
+      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-10 opacity-0 group-hover:opacity-100 focus:opacity-100 md:opacity-100"
       title="Toggle Fullscreen"
+      aria-label="Toggle Fullscreen"
     >
       {#if isFullscreen}
         <Minimize class="w-5 h-5" />

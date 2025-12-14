@@ -48,14 +48,31 @@
   }
 
   async function joinRoom() {
-    if (!joinRoomId.trim()) return;
+    if (!joinRoomId.trim()) {
+      alert('Please enter a room ID');
+      return;
+    }
     
     try {
-      await roomStore.joinRoom(joinRoomId);
+      // Check if room exists first
+      const { data: room, error: roomError } = await supabase
+        .from('rooms')
+        .select('id')
+        .eq('id', joinRoomId.trim())
+        .single();
+      
+      if (roomError || !room) {
+        alert('Room not found. Please check the room ID.');
+        return;
+      }
+      
+      await roomStore.joinRoom(joinRoomId.trim());
+      const roomIdToNavigate = joinRoomId.trim();
       joinRoomId = '';
-      goto(`/room/${roomStore.currentRoom?.id}`);
+      goto(`/room/${roomIdToNavigate}`);
     } catch (error) {
-      alert('Failed to join room. Check the room ID.');
+      console.error('Join room error:', error);
+      alert('Failed to join room. Please try again.');
     }
   }
 

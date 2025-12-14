@@ -18,9 +18,13 @@
     error = null;
 
     try {
-      const roomId = await roomStore.createRoom(roomName);
+      const roomId = await roomStore.createRoom(roomName.trim());
+      console.log('Room created with ID:', roomId);
+      // Small delay to ensure database writes complete
+      await new Promise(resolve => setTimeout(resolve, 500));
       goto(`/room/${roomId}`);
     } catch (err: any) {
+      console.error('Create room error:', err);
       error = err.message || 'Failed to create room';
       loading = false;
     }

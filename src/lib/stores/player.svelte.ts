@@ -59,7 +59,7 @@ class PlayerStore {
         console.log('Player channel status:', status);
       });
 
-    // Start periodic time sync (every 2 seconds)
+    // Start periodic time sync (every 5 seconds for smoother experience)
     this.syncInterval = setInterval(() => {
       if (this.canControl() && this.isPlaying) {
         this.channel?.send({
@@ -72,7 +72,7 @@ class PlayerStore {
           }
         });
       }
-    }, 2000);
+    }, 5000);
   }
 
   unsubscribeFromRoom() {
