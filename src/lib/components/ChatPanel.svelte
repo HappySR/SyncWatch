@@ -443,44 +443,47 @@
       return;
     }
 
-    const peerConnection = new RTCPeerConnection({ iceServers });
-
-    // ADD TRACKS FIRST - before creating offer
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        console.log('Adding track to peer connection:', track.kind);
-        peerConnection.addTrack(track, localStream!);
-      });
-    } else {
+    if (!localStream) {
       console.error('No local stream available when creating peer connection');
-      return; // Don't proceed without local stream
+      return;
     }
 
+    const peerConnection = new RTCPeerConnection({ iceServers });
+
+    // Set up event handlers FIRST before adding tracks
     peerConnection.ontrack = (event) => {
-      console.log('Received remote track from:', userId);
-      remoteStreams.set(userId, event.streams[0]);
-      monitorAudioLevels(event.streams[0], userId);
+      console.log('Received remote track from:', userId, 'kind:', event.track.kind);
       
-      if (remoteVideosContainer) {
-        let remoteVideo = document.getElementById(`remote-${userId}`) as HTMLVideoElement;
+      // Store the stream
+      if (event.streams && event.streams[0]) {
+        remoteStreams.set(userId, event.streams[0]);
+        monitorAudioLevels(event.streams[0], userId);
         
-        if (!remoteVideo) {
-          remoteVideo = document.createElement('video');
-          remoteVideo.id = `remote-${userId}`;
-          remoteVideo.autoplay = true;
-          remoteVideo.playsInline = true;
-          remoteVideo.muted = false;
-          remoteVideo.className = 'w-full h-32 object-cover rounded-lg bg-black';
-          remoteVideosContainer.appendChild(remoteVideo);
-        }
-        
-        remoteVideo.srcObject = event.streams[0];
-        remoteVideo.play().catch(e => console.log('Remote video play error:', e));
+        // Create or update video element
+        setTimeout(() => {
+          if (remoteVideosContainer) {
+            let remoteVideo = document.getElementById(`remote-${userId}`) as HTMLVideoElement;
+            
+            if (!remoteVideo) {
+              remoteVideo = document.createElement('video');
+              remoteVideo.id = `remote-${userId}`;
+              remoteVideo.autoplay = true;
+              remoteVideo.playsInline = true;
+              remoteVideo.muted = false;
+              remoteVideo.className = 'w-full h-32 object-cover rounded-lg bg-black';
+              remoteVideosContainer.appendChild(remoteVideo);
+            }
+            
+            remoteVideo.srcObject = event.streams[0];
+            remoteVideo.play().catch(e => console.log('Remote video play error:', e));
+          }
+        }, 100);
       }
     };
 
     peerConnection.onicecandidate = (event) => {
       if (event.candidate && channel) {
+        console.log('Sending ICE candidate to:', userId);
         channel.send({
           type: 'broadcast',
           event: 'webrtc-signal',
@@ -495,17 +498,39 @@
     };
 
     peerConnection.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', peerConnection.iceConnectionState);
-      if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
-        console.log('Connection lost with:', userId);
+      console.log(`ICE connection state with ${userId}:`, peerConnection.iceConnectionState);
+      if (peerConnection.iceConnectionState === 'connected') {
+        console.log('✅ Successfully connected to:', userId);
+      } else if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
+        console.log('❌ Connection lost with:', userId);
       }
     };
+
+    peerConnection.onconnectionstatechange = () => {
+      console.log(`Connection state with ${userId}:`, peerConnection.connectionState);
+    };
+
+    // Add local tracks with proper error handling
+    localStream.getTracks().forEach(track => {
+      try {
+        console.log('Adding local track to peer connection:', track.kind, 'enabled:', track.enabled);
+        peerConnection.addTrack(track, localStream!);
+      } catch (error) {
+        console.error('Error adding track:', error);
+      }
+    });
 
     peerConnections.set(userId, peerConnection);
 
     try {
-      const offer = await peerConnection.createOffer();
+      // Create offer with proper constraints
+      const offer = await peerConnection.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true
+      });
+      
       await peerConnection.setLocalDescription(offer);
+      console.log('Created and set local description (offer) for:', userId);
 
       if (channel) {
         await channel.send({
@@ -513,11 +538,12 @@
           event: 'webrtc-signal',
           payload: {
             type: 'offer',
-            offer,
+            offer: peerConnection.localDescription,
             to: userId,
             from: authStore.user?.id
           }
         });
+        console.log('Sent offer to:', userId);
       }
     } catch (error) {
       console.error('Error creating offer:', error);
