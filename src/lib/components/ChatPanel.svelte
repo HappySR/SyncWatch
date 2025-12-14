@@ -448,6 +448,7 @@
       return;
     }
 
+    console.log('Creating peer connection with:', userId);
     const peerConnection = new RTCPeerConnection({ iceServers });
 
     // Set up event handlers FIRST before adding tracks
@@ -503,6 +504,11 @@
         console.log('✅ Successfully connected to:', userId);
       } else if (peerConnection.iceConnectionState === 'disconnected' || peerConnection.iceConnectionState === 'failed') {
         console.log('❌ Connection lost with:', userId);
+        // Try to restart ICE
+        if (peerConnection.iceConnectionState === 'failed') {
+          console.log('Attempting ICE restart...');
+          peerConnection.restartIce();
+        }
       }
     };
 
@@ -513,7 +519,7 @@
     // Add local tracks with proper error handling
     localStream.getTracks().forEach(track => {
       try {
-        console.log('Adding local track to peer connection:', track.kind, 'enabled:', track.enabled);
+        console.log('Adding local track to peer connection:', track.kind, 'enabled:', track.enabled, 'id:', track.id);
         peerConnection.addTrack(track, localStream!);
       } catch (error) {
         console.error('Error adding track:', error);
