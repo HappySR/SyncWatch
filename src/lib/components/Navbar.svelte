@@ -43,9 +43,12 @@
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between items-center h-16">
       <div class="flex items-center gap-8">
-        <a href="/dashboard" class="flex items-center gap-2 text-white font-bold text-xl">
-          <Video class="w-6 h-6" />
-          SyncWatch
+        <a href="/dashboard" class="flex items-center gap-2">
+          <img
+            src="/SyncWatch-nobg1.png"
+            alt="SyncWatch"
+            class="h-8 w-auto"
+          />
         </a>
       </div>
 
