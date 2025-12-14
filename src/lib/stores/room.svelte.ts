@@ -117,7 +117,12 @@ class RoomStore {
       .eq('room_id', roomId);
 
     if (error) throw error;
-    this.members = data || [];
+    
+    // Store all members initially
+    const allMembers = data || [];
+    this.members = allMembers;
+    
+    console.log('Loaded all room members:', allMembers.length);
   }
 
   startPresenceTracking(roomId: string) {

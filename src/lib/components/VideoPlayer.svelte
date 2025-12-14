@@ -222,16 +222,39 @@
     }
   });
 
-  // Sync direct video currentTime to playerStore
+  // Sync direct video currentTime to playerStore and handle initial sync
   $effect(() => {
-    if (videoType === 'direct' && videoElement && !playerStore.isSyncing) {
-      const interval = setInterval(() => {
-        if (videoElement && isPlaying) {
-          playerStore.currentTime = videoElement.currentTime;
+    if (videoType === 'direct' && videoElement) {
+      // Initial sync when video loads
+      const handleLoadedMetadata = () => {
+        if (playerStore.isSyncing && Math.abs(videoElement!.currentTime - currentTime) > 0.5) {
+          console.log('Initial video sync to:', currentTime);
+          videoElement!.currentTime = currentTime;
+          if (isPlaying) {
+            videoElement!.play().catch(e => console.log('Autoplay prevented:', e));
+          }
         }
-      }, 500);
-      
-      return () => clearInterval(interval);
+      };
+
+      videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+      // Continuous sync during playback
+      if (!playerStore.isSyncing) {
+        const interval = setInterval(() => {
+          if (videoElement && isPlaying) {
+            playerStore.currentTime = videoElement.currentTime;
+          }
+        }, 500);
+        
+        return () => {
+          clearInterval(interval);
+          videoElement?.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        };
+      }
+
+      return () => {
+        videoElement?.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      };
     }
   });
 </script>

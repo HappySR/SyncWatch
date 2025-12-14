@@ -257,11 +257,6 @@ class PlayerStore {
 
     this.isSyncing = true;
 
-    // Subscribe to the room's broadcast channel
-    if (roomStore.currentRoom.id) {
-      this.subscribeToRoom(roomStore.currentRoom.id);
-    }
-
     // Fetch the most recent room state from database
     const { data: freshRoom } = await supabase
       .from('rooms')
@@ -282,13 +277,27 @@ class PlayerStore {
         this.videoType = null;
       }
       
+      // Sync current time and playing state
       this.currentTime = freshRoom.video_time || 0;
       this.isPlaying = freshRoom.is_playing || false;
+      
+      console.log('Synced video state:', {
+        url: this.videoUrl,
+        type: this.videoType,
+        time: this.currentTime,
+        playing: this.isPlaying
+      });
     }
 
+    // Subscribe to the room's broadcast channel
+    if (roomStore.currentRoom.id) {
+      this.subscribeToRoom(roomStore.currentRoom.id);
+    }
+
+    // Keep syncing flag true a bit longer to ensure video seeks properly
     setTimeout(() => {
       this.isSyncing = false;
-    }, 500);
+    }, 1000);
   }
 
   setVolume(vol: number) {
