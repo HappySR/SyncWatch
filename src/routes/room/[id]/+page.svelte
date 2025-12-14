@@ -31,15 +31,19 @@
       
       await roomStore.joinRoom(roomId);
       console.log('Room joined successfully');
+
+      // Wait a bit to ensure room data is fully loaded
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       console.log('Current room:', roomStore.currentRoom);
       console.log('Current members:', roomStore.members);
       console.log('Current user:', authStore.user?.id);
-      
+
       // Find current user's member record
       const myMember = roomStore.members.find(m => m.user_id === authStore.user?.id);
       console.log('My member record:', myMember);
       console.log('Has controls:', myMember?.has_controls);
-      
+
       console.log('=== SYNCING PLAYER ===');
       await playerStore.syncWithRoom();
       console.log('Player synced with room');

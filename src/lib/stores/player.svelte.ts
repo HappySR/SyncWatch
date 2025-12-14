@@ -60,8 +60,9 @@ class PlayerStore {
       });
 
     // Start periodic time sync (every 5 seconds for smoother experience)
-    this.syncInterval = setInterval(() => {
+    this.syncInterval = setInterval(async () => {
       if (this.canControl() && this.isPlaying) {
+        // Broadcast to other clients
         this.channel?.send({
           type: 'broadcast',
           event: 'time-sync',
@@ -71,6 +72,18 @@ class PlayerStore {
             timestamp: Date.now()
           }
         });
+
+        // Also update database so new joiners get correct time
+        if (roomStore.currentRoom) {
+          await supabase
+            .from('rooms')
+            .update({
+              video_time: this.currentTime,
+              is_playing: this.isPlaying,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', roomStore.currentRoom.id);
+        }
       }
     }, 5000);
   }
@@ -192,12 +205,16 @@ class PlayerStore {
           break;
       }
 
-      await supabase
+      const { error } = await supabase
         .from('rooms')
         .update(updates)
         .eq('id', roomStore.currentRoom.id);
 
-      console.log('Room state updated:', updates);
+      if (error) {
+        console.error('Database update error:', error);
+      } else {
+        console.log('Room state updated in database:', updates);
+      }
     } catch (error) {
       console.error('Failed to update room state:', error);
     }
@@ -209,6 +226,18 @@ class PlayerStore {
     console.log('Play action triggered');
     this.isPlaying = true;
     await this.broadcastEvent('play', { time: this.currentTime });
+    
+    // Immediately update database
+    if (roomStore.currentRoom) {
+      await supabase
+        .from('rooms')
+        .update({
+          is_playing: true,
+          video_time: this.currentTime,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', roomStore.currentRoom.id);
+    }
   }
 
   async pause() {
@@ -217,6 +246,18 @@ class PlayerStore {
     console.log('Pause action triggered');
     this.isPlaying = false;
     await this.broadcastEvent('pause', { time: this.currentTime });
+    
+    // Immediately update database
+    if (roomStore.currentRoom) {
+      await supabase
+        .from('rooms')
+        .update({
+          is_playing: false,
+          video_time: this.currentTime,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', roomStore.currentRoom.id);
+    }
   }
 
   async seek(time: number) {
@@ -225,6 +266,17 @@ class PlayerStore {
     console.log('Seek action triggered to:', time);
     this.currentTime = time;
     await this.broadcastEvent('seek', { time });
+    
+    // Immediately update database
+    if (roomStore.currentRoom) {
+      await supabase
+        .from('rooms')
+        .update({
+          video_time: time,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', roomStore.currentRoom.id);
+    }
   }
 
   async changeVideo(url: string, type: 'youtube' | 'direct') {
@@ -235,7 +287,29 @@ class PlayerStore {
     this.videoType = type;
     this.currentTime = 0;
     this.isPlaying = false;
+    
+    // Broadcast to connected clients
     await this.broadcastEvent('change_video', { url, videoType: type });
+    
+    // Also directly update database to ensure it's saved
+    if (roomStore.currentRoom) {
+      const { error } = await supabase
+        .from('rooms')
+        .update({
+          current_video_url: url,
+          current_video_type: type,
+          video_time: 0,
+          is_playing: false,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', roomStore.currentRoom.id);
+      
+      if (error) {
+        console.error('Failed to save video to database:', error);
+      } else {
+        console.log('Video saved to database successfully');
+      }
+    }
   }
 
   canControl(): boolean {
