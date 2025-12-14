@@ -48,31 +48,48 @@
   }
 
   async function joinRoom() {
-    if (!joinRoomId.trim()) {
+    const trimmedId = joinRoomId.trim();
+    
+    if (!trimmedId) {
       alert('Please enter a room ID');
       return;
     }
+    
+    console.log('Attempting to join room with ID:', trimmedId);
     
     try {
       // Check if room exists first
       const { data: room, error: roomError } = await supabase
         .from('rooms')
-        .select('id')
-        .eq('id', joinRoomId.trim())
+        .select('id, name, is_public')
+        .eq('id', trimmedId)
         .single();
       
+      console.log('Room lookup result:', { room, roomError });
+      
       if (roomError || !room) {
-        alert('Room not found. Please check the room ID.');
+        alert('Room not found. Please check the room ID and try again.');
         return;
       }
       
-      await roomStore.joinRoom(joinRoomId.trim());
-      const roomIdToNavigate = joinRoomId.trim();
+      if (!room.is_public) {
+        alert('This room is private and cannot be joined directly.');
+        return;
+      }
+      
+      // Join the room
+      await roomStore.joinRoom(trimmedId);
+      
+      // Wait a bit for the join to complete
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Clear input and navigate
       joinRoomId = '';
-      goto(`/room/${roomIdToNavigate}`);
-    } catch (error) {
+      goto(`/room/${trimmedId}`);
+      
+    } catch (error: any) {
       console.error('Join room error:', error);
-      alert('Failed to join room. Please try again.');
+      alert(error.message || 'Failed to join room. Please try again.');
     }
   }
 

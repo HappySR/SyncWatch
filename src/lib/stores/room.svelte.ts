@@ -62,17 +62,36 @@ class RoomStore {
     this.error = null;
 
     try {
+      console.log('Attempting to join room:', roomId);
+      
+      // First verify the room exists
+      const { data: roomExists, error: roomCheckError } = await supabase
+        .from('rooms')
+        .select('id, name')
+        .eq('id', roomId)
+        .single();
+
+      if (roomCheckError || !roomExists) {
+        console.error('Room not found:', roomCheckError);
+        throw new Error('Room not found');
+      }
+
+      console.log('Room exists:', roomExists);
+
       // Check if already a member
-      const { data: existing } = await supabase
+      const { data: existing, error: _memberCheckError } = await supabase
         .from('room_members')
         .select()
         .eq('room_id', roomId)
         .eq('user_id', authStore.user.id)
-        .single();
+        .maybeSingle();
+
+      console.log('Existing membership:', existing);
 
       if (!existing) {
+        console.log('Adding user as new member');
         // Add as member with controls enabled by default
-        const { error } = await supabase
+        const { error: insertError } = await supabase
           .from('room_members')
           .insert({
             room_id: roomId,
@@ -80,13 +99,22 @@ class RoomStore {
             has_controls: true
           });
 
-        if (error) throw error;
+        if (insertError) {
+          console.error('Failed to add member:', insertError);
+          throw insertError;
+        }
+        console.log('Member added successfully');
+      } else {
+        console.log('User is already a member');
       }
 
       await this.loadRoom(roomId);
       this.subscribeToRoom(roomId);
       this.startPresenceTracking(roomId);
+      
+      console.log('Successfully joined room');
     } catch (err: any) {
+      console.error('Join room error:', err);
       this.error = err.message;
       throw err;
     } finally {

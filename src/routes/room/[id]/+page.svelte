@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { onMount, onDestroy } from 'svelte';
   import { roomStore } from '$lib/stores/room.svelte';
   import { playerStore } from '$lib/stores/player.svelte';
@@ -12,10 +13,18 @@
 
   let roomId = $derived($page.params.id ?? '');
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let copied = $state(false);
   let isVideoFullscreen = $state(false);
 
   onMount(async () => {
+    if (!roomId) {
+      console.error('No room ID provided');
+      error = 'Invalid room ID';
+      loading = false;
+      return;
+    }
+
     try {
       console.log('Joining room:', roomId);
       await roomStore.joinRoom(roomId);
@@ -31,9 +40,15 @@
       await playerStore.syncWithRoom();
       console.log('Player synced with room');
       loading = false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to join room:', error);
       loading = false;
+      
+      // Show user-friendly error
+      setTimeout(() => {
+        alert(`Failed to join room: ${error.message || 'Unknown error'}. Returning to dashboard.`);
+        goto('/dashboard');
+      }, 100);
     }
   });
 
