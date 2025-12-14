@@ -26,9 +26,12 @@
     }
 
     try {
-      console.log('Joining room:', roomId);
+      console.log('=== JOINING ROOM ===');
+      console.log('Room ID:', roomId);
+      
       await roomStore.joinRoom(roomId);
       console.log('Room joined successfully');
+      console.log('Current room:', roomStore.currentRoom);
       console.log('Current members:', roomStore.members);
       console.log('Current user:', authStore.user?.id);
       
@@ -37,8 +40,16 @@
       console.log('My member record:', myMember);
       console.log('Has controls:', myMember?.has_controls);
       
+      console.log('=== SYNCING PLAYER ===');
       await playerStore.syncWithRoom();
       console.log('Player synced with room');
+      console.log('Player state after sync:', {
+        videoUrl: playerStore.videoUrl,
+        videoType: playerStore.videoType,
+        currentTime: playerStore.currentTime,
+        isPlaying: playerStore.isPlaying
+      });
+      
       loading = false;
     } catch (error: any) {
       console.error('Failed to join room:', error);

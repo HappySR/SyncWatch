@@ -93,7 +93,12 @@
     if (!videoUrl || videoType !== 'youtube') return;
     
     const videoId = getYouTubeVideoId(videoUrl);
-    if (!videoId) return;
+    if (!videoId) {
+      console.error('Could not extract video ID from:', videoUrl);
+      return;
+    }
+
+    console.log('Initializing YouTube player with video ID:', videoId);
 
     if (youtubePlayer) {
       youtubePlayer.destroy();
@@ -110,19 +115,33 @@
         modestbranding: 1,
         rel: 0,
         fs: 0,
-        playsinline: 1
+        playsinline: 1,
+        autoplay: 0
       },
       events: {
         onReady: () => {
           console.log('YouTube player ready');
-          lastYtTime = 0;
-          syncPlayer();
-          startYouTubeMonitoring();
+          console.log('Current playerStore state:', {
+            currentTime,
+            isPlaying,
+            isSyncing: playerStore.isSyncing
+          });
+          
+          lastYtTime = currentTime;
+          
+          // Sync player state after a short delay to ensure player is fully loaded
+          setTimeout(() => {
+            syncPlayer();
+            startYouTubeMonitoring();
+          }, 500);
         },
         onStateChange: (event: any) => {
           const YT = (window as any).YT;
           
-          if (playerStore.isSyncing) return;
+          if (playerStore.isSyncing) {
+            console.log('Ignoring state change during sync');
+            return;
+          }
           
           if (event.data === YT.PlayerState.PLAYING && !isPlaying) {
             console.log('YouTube play detected');
@@ -214,6 +233,10 @@
 
   $effect(() => {
     if (videoUrl && videoType === 'youtube') {
+      console.log('Effect triggered: Initializing YouTube player');
+      console.log('Video URL:', videoUrl);
+      console.log('Current time:', currentTime);
+      console.log('Is playing:', isPlaying);
       initYouTubePlayer();
     }
   });

@@ -258,13 +258,22 @@ class PlayerStore {
     this.isSyncing = true;
 
     // Fetch the most recent room state from database
-    const { data: freshRoom } = await supabase
+    const { data: freshRoom, error } = await supabase
       .from('rooms')
       .select('*')
       .eq('id', roomStore.currentRoom.id)
       .single();
 
+    if (error) {
+      console.error('Error fetching room state:', error);
+      this.isSyncing = false;
+      return;
+    }
+
     if (freshRoom) {
+      console.log('Fresh room data:', freshRoom);
+      
+      // Set video URL and type
       this.videoUrl = freshRoom.current_video_url;
       
       // Handle video type conversion
@@ -280,24 +289,27 @@ class PlayerStore {
       // Sync current time and playing state
       this.currentTime = freshRoom.video_time || 0;
       this.isPlaying = freshRoom.is_playing || false;
+      this.duration = freshRoom.duration || 0;
       
       console.log('Synced video state:', {
         url: this.videoUrl,
         type: this.videoType,
         time: this.currentTime,
-        playing: this.isPlaying
+        playing: this.isPlaying,
+        duration: this.duration
       });
     }
 
-    // Subscribe to the room's broadcast channel
+    // Subscribe to the room's broadcast channel BEFORE releasing sync flag
     if (roomStore.currentRoom.id) {
       this.subscribeToRoom(roomStore.currentRoom.id);
     }
 
-    // Keep syncing flag true a bit longer to ensure video seeks properly
+    // Keep syncing flag true longer to ensure video loads and seeks properly
     setTimeout(() => {
+      console.log('Releasing sync flag');
       this.isSyncing = false;
-    }, 1000);
+    }, 3000); // Increased from 1000ms to 3000ms
   }
 
   setVolume(vol: number) {
