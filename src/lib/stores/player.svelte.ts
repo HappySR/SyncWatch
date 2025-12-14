@@ -214,7 +214,7 @@ class PlayerStore {
     return true;
   }
 
-  syncWithRoom() {
+  async syncWithRoom() {
     if (!roomStore.currentRoom) return;
 
     console.log('Syncing with room state:', roomStore.currentRoom);
@@ -226,24 +226,33 @@ class PlayerStore {
       this.subscribeToRoom(roomStore.currentRoom.id);
     }
 
-    this.videoUrl = roomStore.currentRoom.current_video_url;
-    
-    // Handle video type conversion
-    const roomVideoType = roomStore.currentRoom.current_video_type;
-    if (roomVideoType === 'youtube' || roomVideoType === 'direct') {
-      this.videoType = roomVideoType;
-    } else if (roomVideoType === 'drive') {
-      this.videoType = 'direct'; // Treat drive as direct
-    } else {
-      this.videoType = null;
+    // Fetch the most recent room state from database
+    const { data: freshRoom } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('id', roomStore.currentRoom.id)
+      .single();
+
+    if (freshRoom) {
+      this.videoUrl = freshRoom.current_video_url;
+      
+      // Handle video type conversion
+      const roomVideoType = freshRoom.current_video_type;
+      if (roomVideoType === 'youtube' || roomVideoType === 'direct') {
+        this.videoType = roomVideoType;
+      } else if (roomVideoType === 'drive') {
+        this.videoType = 'direct';
+      } else {
+        this.videoType = null;
+      }
+      
+      this.currentTime = freshRoom.video_time || 0;
+      this.isPlaying = freshRoom.is_playing || false;
     }
-    
-    this.currentTime = roomStore.currentRoom.video_time || 0;
-    this.isPlaying = roomStore.currentRoom.is_playing || false;
 
     setTimeout(() => {
       this.isSyncing = false;
-    }, 200);
+    }, 500);
   }
 
   setVolume(vol: number) {

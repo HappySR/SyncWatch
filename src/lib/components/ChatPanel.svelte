@@ -146,20 +146,26 @@
         }
       });
 
-      // Wait a bit for the stream to be ready
+      isMicOn = true;
+      isVideoOn = true;
+      isInCall = true;
+
+      // Wait for the next tick to ensure DOM is updated
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      if (localVideoElement) {
+      if (localVideoElement && localStream) {
         localVideoElement.srcObject = localStream;
-        await localVideoElement.play();
+        localVideoElement.muted = true;
+        try {
+          await localVideoElement.play();
+          console.log('Local video started successfully');
+        } catch (playError) {
+          console.error('Error playing local video:', playError);
+        }
       }
 
       // Monitor audio levels for active speaker detection
       monitorAudioLevels(localStream, authStore.user?.id || '');
-
-      isMicOn = true;
-      isVideoOn = true;
-      isInCall = true;
 
       if (channel) {
         channel.send({
@@ -587,6 +593,10 @@
               playsinline
               class="w-full h-48 object-cover rounded-lg bg-black"
               style="transform: scaleX(-1);"
+              onloadedmetadata={(e) => {
+                console.log('Local video metadata loaded');
+                e.currentTarget.play().catch(err => console.log('Play error:', err));
+              }}
             ></video>
             <div class="absolute bottom-2 left-2 bg-black/60 px-2 py-1 rounded text-white text-xs">
               You

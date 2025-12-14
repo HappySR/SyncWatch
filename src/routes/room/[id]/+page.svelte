@@ -18,7 +18,7 @@
   onMount(async () => {
     try {
       await roomStore.joinRoom(roomId);
-      playerStore.syncWithRoom();
+      await playerStore.syncWithRoom();
       loading = false;
     } catch (error) {
       console.error('Failed to join room:', error);

@@ -115,7 +115,7 @@
       <button
         onclick={handleLoadVideo}
         type="button"
-        class="w-full bg-primary hover:opacity-90 text-white px-4 py-3 rounded-lg transition font-medium"
+        class="w-full bg-primary hover:opacity-90 px-4 py-3 rounded-lg transition font-medium text-black"
       >
         Load Video
       </button>

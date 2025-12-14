@@ -83,3 +83,42 @@
 .accent-primary {
   accent-color: var(--color-primary);
 }
+
+/* Button text colors for better contrast */
+.bg-primary {
+  background-color: var(--color-primary);
+}
+
+.text-primary {
+  color: var(--color-primary);
+}
+
+/* Ensure buttons with primary background have proper text color */
+button.bg-primary,
+a.bg-primary,
+.bg-primary.text-white {
+  color: #000000;
+}
+
+/* Override for sunishka theme specifically */
+:root:has([data-theme="sunishka"]) button.bg-primary,
+:root:has([data-theme="sunishka"]) a.bg-primary,
+:root:has([data-theme="sunishka"]) .bg-primary {
+  color: #000000 !important;
+}
+
+/* For hover states */
+.hover\:bg-primary\/90:hover {
+  background-color: color-mix(in srgb, var(--color-primary) 90%, transparent);
+  color: #000000;
+}
+
+.bg-secondary {
+  background-color: var(--color-secondary);
+  color: #000000;
+}
+
+.hover\:bg-secondary\/90:hover {
+  background-color: color-mix(in srgb, var(--color-secondary) 90%, transparent);
+  color: #000000;
+}
