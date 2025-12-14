@@ -17,8 +17,19 @@
 
   onMount(async () => {
     try {
+      console.log('Joining room:', roomId);
       await roomStore.joinRoom(roomId);
+      console.log('Room joined successfully');
+      console.log('Current members:', roomStore.members);
+      console.log('Current user:', authStore.user?.id);
+      
+      // Find current user's member record
+      const myMember = roomStore.members.find(m => m.user_id === authStore.user?.id);
+      console.log('My member record:', myMember);
+      console.log('Has controls:', myMember?.has_controls);
+      
       await playerStore.syncWithRoom();
+      console.log('Player synced with room');
       loading = false;
     } catch (error) {
       console.error('Failed to join room:', error);
