@@ -16,6 +16,8 @@ class PlayerStore {
   private isProcessingEvent = false;
   private currentRoomId: string | null = null;
 
+  private syncInterval: any = null;
+
   subscribeToRoom(roomId: string) {
     // Prevent duplicate subscriptions
     if (this.currentRoomId === roomId && this.channel) {
@@ -38,9 +40,39 @@ class PlayerStore {
           this.handleRealtimeEvent(payload.payload);
         }
       )
+      .on(
+        'broadcast',
+        { event: 'time-sync' },
+        (payload) => {
+          // Sync time from controller
+          if (payload.payload.userId !== authStore.user?.id) {
+            const timeDiff = Math.abs(this.currentTime - payload.payload.time);
+            if (timeDiff > 1) { // Only sync if difference > 1 second
+              this.currentTime = payload.payload.time;
+              this.isSyncing = true;
+              setTimeout(() => this.isSyncing = false, 100);
+            }
+          }
+        }
+      )
       .subscribe((status) => {
         console.log('Player channel status:', status);
       });
+
+    // Start periodic time sync (every 2 seconds)
+    this.syncInterval = setInterval(() => {
+      if (this.canControl() && this.isPlaying) {
+        this.channel?.send({
+          type: 'broadcast',
+          event: 'time-sync',
+          payload: {
+            time: this.currentTime,
+            userId: authStore.user?.id,
+            timestamp: Date.now()
+          }
+        });
+      }
+    }, 2000);
   }
 
   unsubscribeFromRoom() {
@@ -48,6 +80,10 @@ class PlayerStore {
       supabase.removeChannel(this.channel);
       this.channel = null;
       this.currentRoomId = null;
+    }
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
     }
   }
 
@@ -261,6 +297,10 @@ class PlayerStore {
 
   cleanup() {
     this.unsubscribeFromRoom();
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
   }
 }
 

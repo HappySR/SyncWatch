@@ -445,10 +445,15 @@
 
     const peerConnection = new RTCPeerConnection({ iceServers });
 
+    // ADD TRACKS FIRST - before creating offer
     if (localStream) {
       localStream.getTracks().forEach(track => {
+        console.log('Adding track to peer connection:', track.kind);
         peerConnection.addTrack(track, localStream!);
       });
+    } else {
+      console.error('No local stream available when creating peer connection');
+      return; // Don't proceed without local stream
     }
 
     peerConnection.ontrack = (event) => {
@@ -520,7 +525,7 @@
       peerConnections.delete(userId);
     }
   }
-
+  
   async function handleWebRTCSignal(payload: any) {
     const { type, userId, to, from, offer, answer, candidate } = payload.payload;
 
