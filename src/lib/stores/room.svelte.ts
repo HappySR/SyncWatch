@@ -180,7 +180,7 @@ class RoomStore {
     }, 30000);
   }
 
-  updateMembersFromPresence(presenceState: any) {
+  async updateMembersFromPresence(presenceState: any) {
     const onlineUserIds = new Set<string>();
     
     Object.keys(presenceState).forEach(key => {
@@ -192,10 +192,23 @@ class RoomStore {
       });
     });
 
-    // Filter members to only show online users
-    this.members = this.members.filter(member => 
-      onlineUserIds.has(member.user_id)
-    );
+    // Reload all members from database
+    if (this.currentRoom) {
+      const { data } = await supabase
+        .from('room_members')
+        .select(`
+          *,
+          profiles (*)
+        `)
+        .eq('room_id', this.currentRoom.id);
+      
+      if (data) {
+        // Filter to only show online users
+        this.members = data.filter(member => 
+          onlineUserIds.has(member.user_id)
+        );
+      }
+    }
 
     console.log('Online members:', this.members.length, 'out of', onlineUserIds.size);
   }

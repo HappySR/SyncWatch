@@ -222,6 +222,13 @@
     }
   });
 
+  // Set video source for direct videos
+  $effect(() => {
+    if (videoElement && videoUrl && videoType === 'direct') {
+      videoElement.src = videoUrl;
+    }
+  });
+
   // Sync direct video currentTime to playerStore and handle initial sync
   $effect(() => {
     if (videoType === 'direct' && videoElement) {
@@ -289,7 +296,6 @@
   {:else}
     <video
       bind:this={videoElement}
-      src={videoUrl}
       class="w-full h-full"
       controls
       onloadedmetadata={() => {

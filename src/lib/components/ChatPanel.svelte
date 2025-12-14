@@ -54,9 +54,18 @@
     { urls: 'stun:stun4.l.google.com:19302' }
   ];
 
+  let audioContexts = $state<Map<string, AudioContext>>(new Map());
+
   onMount(async () => {
     await loadMessages();
     subscribeToChat();
+  });
+
+
+  $effect(() => {
+    if (localVideoElement && localStream) {
+      localVideoElement.srcObject = localStream;
+    }
   });
 
   onDestroy(() => {
@@ -377,6 +386,10 @@
       });
     }
 
+    // Clean up audio contexts
+    audioContexts.forEach(context => context.close());
+    audioContexts.clear();
+
     // Clean up remote videos
     if (remoteVideosContainer) {
       remoteVideosContainer.innerHTML = '';
@@ -405,7 +418,15 @@
 
   function monitorAudioLevels(stream: MediaStream, userId: string) {
     try {
+      // Clean up existing context for this user
+      const existingContext = audioContexts.get(userId);
+      if (existingContext) {
+        existingContext.close();
+      }
+
       const audioContext = new AudioContext();
+      audioContexts.set(userId, audioContext);
+      
       const analyser = audioContext.createAnalyser();
       const microphone = audioContext.createMediaStreamSource(stream);
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -417,6 +438,7 @@
       function checkAudioLevel() {
         if (!isInCall) {
           audioContext.close();
+          audioContexts.delete(userId);
           return;
         }
 
@@ -461,7 +483,7 @@
         monitorAudioLevels(event.streams[0], userId);
         
         // Create or update video element
-        setTimeout(() => {
+        setTimeout(async () => {
           if (remoteVideosContainer) {
             let remoteVideo = document.getElementById(`remote-${userId}`) as HTMLVideoElement;
             
@@ -476,7 +498,12 @@
             }
             
             remoteVideo.srcObject = event.streams[0];
-            remoteVideo.play().catch(e => console.log('Remote video play error:', e));
+            try {
+              await remoteVideo.play();
+              console.log('Remote video playing for:', userId);
+            } catch (e) {
+              console.log('Remote video play error:', e);
+            }
           }
         }, 100);
       }
@@ -760,7 +787,7 @@
             
             <!-- Show local video as small pip -->
             <video
-              srcObject={localStream || undefined}
+              bind:this={localVideoElement}
               autoplay
               muted
               playsinline
@@ -770,7 +797,7 @@
           {:else}
             <!-- Show local video full if no remotes -->
             <video
-              srcObject={localStream || undefined}
+              bind:this={localVideoElement}
               autoplay
               muted
               playsinline
@@ -878,7 +905,7 @@
           <div class="relative">
             <video
               bind:this={localVideoElement}
-              srcObject={localStream || undefined}
+              bind:this={localVideoElement}
               autoplay
               muted
               playsinline
