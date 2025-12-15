@@ -290,15 +290,28 @@ class PlayerStore {
           this.videoType = null;
         }
         
-        // Sync state
-        this.currentTime = freshRoom.video_time || 0;
+        // ⭐ KEY CHANGE: Always sync to current time, not 0
+        // Calculate current time based on when video was last updated
+        let syncTime = freshRoom.video_time || 0;
+        
+        // If video is playing, add elapsed time since last update
+        if (freshRoom.is_playing && freshRoom.last_updated) {
+          const lastUpdate = new Date(freshRoom.last_updated).getTime();
+          const now = Date.now();
+          const elapsedSeconds = (now - lastUpdate) / 1000;
+          syncTime = syncTime + elapsedSeconds;
+          console.log('⏱️ Video is playing, adding elapsed time:', elapsedSeconds, 'seconds');
+        }
+        
+        this.currentTime = syncTime;
         this.isPlaying = freshRoom.is_playing || false;
         
         console.log('✅ Synced state:', {
           url: this.videoUrl,
           type: this.videoType,
           time: this.currentTime,
-          playing: this.isPlaying
+          playing: this.isPlaying,
+          elapsed: freshRoom.is_playing ? 'calculated' : 'exact'
         });
       }
 

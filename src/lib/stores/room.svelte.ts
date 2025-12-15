@@ -231,14 +231,18 @@ class RoomStore {
         .eq('room_id', this.currentRoom.id);
       
       if (data) {
-        // Filter to only show online users
-        this.members = data.filter(member => 
-          onlineUserIds.has(member.user_id)
-        );
+        // ⭐ KEY CHANGE: Show ALL members, mark who's online
+        this.members = data.map(member => ({
+          ...member,
+          is_online: onlineUserIds.has(member.user_id)
+        }));
+        
+        console.log('📊 Members updated:', {
+          total: this.members.length,
+          online: this.members.filter(m => m.is_online).length
+        });
       }
     }
-
-    console.log('Online members:', this.members.length, 'out of', onlineUserIds.size);
   }
 
   subscribeToRoom(roomId: string) {

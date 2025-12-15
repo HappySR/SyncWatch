@@ -26,6 +26,7 @@ export interface RoomMember {
   has_controls: boolean;
   joined_at: string;
   profiles?: Profile;
+  is_online?: boolean;
 }
 
 export interface PlayerEvent {

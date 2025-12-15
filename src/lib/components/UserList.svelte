@@ -20,25 +20,39 @@
   <div class="space-y-2">
     {#each roomStore.members as member}
       {@const isRoomHost = member.user_id === roomStore.currentRoom?.host_id}
-      <div class="bg-surface-hover rounded-lg p-3 flex items-center justify-between">
+      {@const isOnline = member.is_online !== false}
+      <div class="bg-surface-hover rounded-lg p-3 flex items-center justify-between {!isOnline ? 'opacity-50' : ''}">
         <div class="flex items-center gap-3">
-          {#if member.profiles?.avatar_url}
-            <img 
-              src={member.profiles.avatar_url} 
-              alt={member.profiles.display_name || 'User'}
-              class="w-8 h-8 rounded-full"
-            />
-          {:else}
-            <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-sm font-bold">
-              {(member.profiles?.display_name?.[0] || member.profiles?.email?.[0] || '?').toUpperCase()}
-            </div>
-          {/if}
+          <div class="relative">
+            {#if member.profiles?.avatar_url}
+              <img 
+                src={member.profiles.avatar_url} 
+                alt={member.profiles.display_name || 'User'}
+                class="w-8 h-8 rounded-full"
+              />
+            {:else}
+              <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-sm font-bold">
+                {(member.profiles?.display_name?.[0] || member.profiles?.email?.[0] || '?').toUpperCase()}
+              </div>
+            {/if}
+            
+            <!-- Online status indicator -->
+            {#if isOnline}
+              <div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-surface"></div>
+            {:else}
+              <div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-gray-500 rounded-full border-2 border-surface"></div>
+            {/if}
+          </div>
 
           <div>
             <div class="text-text-primary text-sm font-medium flex items-center gap-2">
               {member.profiles?.display_name || member.profiles?.email || 'Unknown'}
               {#if isRoomHost}
                 <Crown class="w-3 h-3 text-yellow-400" />
+              {/if}
+              <!-- Online/Offline badge -->
+              {#if !isOnline}
+                <span class="text-xs text-gray-500">(Offline)</span>
               {/if}
             </div>
             <div class="text-text-muted text-xs">
