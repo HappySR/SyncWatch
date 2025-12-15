@@ -317,13 +317,24 @@
     };
 
     peerConnection.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state for ${userId}:`, peerConnection.iceConnectionState);
       if (peerConnection.iceConnectionState === 'failed') {
+        console.log('ICE connection failed, restarting...');
         peerConnection.restartIce();
+      } else if (peerConnection.iceConnectionState === 'disconnected') {
+        console.log('ICE connection disconnected');
       }
     };
 
+    peerConnection.onnegotiationneeded = async () => {
+      console.log('Negotiation needed for', userId);
+    };
+
+    // Add local tracks to peer connection
     localStream.getTracks().forEach(track => {
-      peerConnection.addTrack(track, localStream!);
+      console.log(`Adding ${track.kind} track to peer connection for ${userId}`);
+      const sender = peerConnection.addTrack(track, localStream!);
+      console.log('Track added:', sender);
     });
 
     peerConnections.set(userId, peerConnection);
@@ -363,6 +374,7 @@
       switch (type) {
         case 'user-joined':
           if (isInCall && userId !== authStore.user?.id) {
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait for other peer to be ready
             createPeerConnection(userId);
           }
           break;
@@ -380,6 +392,8 @@
         case 'offer':
           if (!isInCall) return;
           
+          console.log('Received offer from:', from);
+          
           let existingOfferPc = peerConnections.get(from);
           if (existingOfferPc) {
             existingOfferPc.close();
@@ -388,16 +402,21 @@
 
           const newPeerConnection = new RTCPeerConnection({ iceServers });
 
+          // Add local tracks FIRST before setting remote description
           if (localStream) {
             localStream.getTracks().forEach(track => {
+              console.log(`Adding ${track.kind} track to answer peer connection for ${from}`);
               newPeerConnection.addTrack(track, localStream!);
             });
           }
 
           newPeerConnection.ontrack = (event) => {
-            remoteStreams.set(from, event.streams[0]);
-            remoteStreams = new Map(remoteStreams);
-            monitorAudioLevels(event.streams[0], from);
+            console.log('Received track from:', from, event.track.kind);
+            if (event.streams && event.streams[0]) {
+              remoteStreams.set(from, event.streams[0]);
+              remoteStreams = new Map(remoteStreams);
+              monitorAudioLevels(event.streams[0], from);
+            }
           };
 
           newPeerConnection.onicecandidate = (event) => {
@@ -415,12 +434,20 @@
             }
           };
 
+          newPeerConnection.oniceconnectionstatechange = () => {
+            console.log(`ICE connection state for ${from}:`, newPeerConnection.iceConnectionState);
+            if (newPeerConnection.iceConnectionState === 'failed') {
+              newPeerConnection.restartIce();
+            }
+          };
+
           peerConnections.set(from, newPeerConnection);
 
           await newPeerConnection.setRemoteDescription(new RTCSessionDescription(offer));
           const answerDesc = await newPeerConnection.createAnswer();
           await newPeerConnection.setLocalDescription(answerDesc);
 
+          console.log('Sending answer to:', from);
           if (channel) {
             await channel.send({
               type: 'broadcast',
@@ -436,16 +463,23 @@
           break;
 
         case 'answer':
+          console.log('Received answer from:', from);
           const answerPc = peerConnections.get(from);
-          if (answerPc) {
+          if (answerPc && answerPc.signalingState !== 'stable') {
             await answerPc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log('Answer applied for:', from);
           }
           break;
 
         case 'ice-candidate':
           const candidatePc = peerConnections.get(from);
           if (candidatePc && candidate) {
-            await candidatePc.addIceCandidate(new RTCIceCandidate(candidate));
+            if (candidatePc.remoteDescription) {
+              await candidatePc.addIceCandidate(new RTCIceCandidate(candidate));
+              console.log('ICE candidate added for:', from);
+            } else {
+              console.log('Waiting for remote description before adding ICE candidate');
+            }
           }
           break;
       }
@@ -463,15 +497,21 @@
 />
 
 {#if isFullscreen && isInCall}
-  <div class="fixed bottom-4 right-4 z-50 transition-all duration-300 {isMinimized ? 'w-20' : 'w-96'}">
-    <div class="bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/20">
-      {#if !isMinimized}
+  {#if !isMinimized}
+    <div class="fixed bottom-4 right-4 z-50 w-96 transition-all duration-300">
+      <div class="bg-black/90 backdrop-blur-md rounded-xl overflow-hidden border border-white/20 shadow-2xl">
         <div class="p-3">
           <div class="flex items-center justify-between mb-2">
             <span class="text-white text-sm font-medium">Call ({usersInCall.size})</span>
-            <button onclick={() => isMinimized = true} class="text-white/60 hover:text-white transition">
-              <Minimize2 class="w-4 h-4" />
-            </button>
+            <div class="flex gap-2">
+              <button 
+                onclick={() => isMinimized = true} 
+                class="text-white/60 hover:text-white transition p-1"
+                title="Minimize"
+              >
+                <Minimize2 class="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <VideoGrid 
@@ -480,6 +520,7 @@
             {activeSpeaker}
             currentUserId={authStore.user?.id || ''}
             compact={true}
+            isDraggable={false}
           />
 
           <VideoControls
@@ -490,13 +531,20 @@
             onEndCall={endCall}
           />
         </div>
-      {:else}
-        <button onclick={() => isMinimized = false} class="p-4 w-full flex items-center justify-center">
-          <Phone class="w-6 h-6 text-white" />
-        </button>
-      {/if}
+      </div>
     </div>
-  </div>
+  {:else}
+    <!-- Minimized video call - draggable -->
+    <VideoGrid 
+      {localStream}
+      {remoteStreams}
+      {activeSpeaker}
+      currentUserId={authStore.user?.id || ''}
+      compact={true}
+      isDraggable={true}
+      onMaximize={() => isMinimized = false}
+    />
+  {/if}
 {:else if !isFullscreen && isInCall}
   <div class="space-y-3">
     <div class="text-text-secondary text-sm text-center">
