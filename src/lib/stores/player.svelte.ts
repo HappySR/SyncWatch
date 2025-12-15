@@ -79,7 +79,12 @@ class PlayerStore {
   }
 
   handleRealtimeEvent(event: any) {
-    if (event.userId === authStore.user?.id || this.isProcessingEvent) {
+    // Allow processing our own change_video events to ensure consistency
+    if (event.userId === authStore.user?.id && event.type !== 'change_video') {
+      return;
+    }
+
+    if (this.isProcessingEvent && event.type !== 'change_video') {
       return;
     }
 
@@ -111,11 +116,13 @@ class PlayerStore {
           break;
         
         case 'change_video':
+          console.log('📺 Received change_video event:', event);
           if (event.url) {
             this.videoUrl = event.url;
             this.videoType = event.videoType || this.detectVideoType(event.url);
             this.currentTime = 0;
             this.isPlaying = false;
+            console.log('✅ Video changed to:', this.videoUrl, this.videoType);
           }
           break;
       }
@@ -123,7 +130,7 @@ class PlayerStore {
       setTimeout(() => {
         this.isSyncing = false;
         this.isProcessingEvent = false;
-      }, 100);
+      }, event.type === 'change_video' ? 2000 : 100);
     }
   }
 
@@ -233,6 +240,7 @@ class PlayerStore {
     
     console.log('🎬 Change video triggered:', url, type);
 
+    // Stop current playback
     if (this.isPlaying) {
       this.isPlaying = false;
     }
@@ -243,7 +251,7 @@ class PlayerStore {
     this.currentTime = 0;
     this.isPlaying = false;
     
-    // Save to database FIRST, then broadcast
+    // Save to database FIRST
     if (roomStore.currentRoom) {
       const { error } = await supabase
         .from('rooms')
@@ -265,10 +273,16 @@ class PlayerStore {
       console.log('✅ Video saved to database successfully');
     }
     
-    // Then broadcast to other users
+    // Broadcast to ALL users (including yourself for consistency)
     await this.broadcastEvent('change_video', { url, videoType: type });
     
-    console.log('✅ Video change complete');
+    // Force sync flag
+    this.isSyncing = true;
+    setTimeout(() => {
+      this.isSyncing = false;
+    }, 2000);
+    
+    console.log('✅ Video change complete and broadcasted');
   }
 
   canControl(): boolean {

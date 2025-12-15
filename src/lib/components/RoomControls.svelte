@@ -63,9 +63,6 @@
       console.log('📤 Sending video to playerStore:', { url: processedUrl, type: detectedType });
       await playerStore.changeVideo(processedUrl, detectedType);
       
-      // ⭐ KEY CHANGE: Wait a bit to ensure database update completes
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
       console.log('✅ Video loaded successfully');
       videoUrl = '';
     } catch (error) {

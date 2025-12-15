@@ -535,15 +535,41 @@
     </div>
   {:else}
     <!-- Minimized video call - draggable -->
-    <VideoGrid 
-      {localStream}
-      {remoteStreams}
-      {activeSpeaker}
-      currentUserId={authStore.user?.id || ''}
-      compact={true}
-      isDraggable={true}
-      onMaximize={() => isMinimized = false}
-    />
+    <div class="fixed bottom-4 right-4 z-50 w-64">
+      <div class="bg-black/90 backdrop-blur-md rounded-xl overflow-hidden border border-white/20 shadow-2xl">
+        <div class="p-2">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-white text-xs font-medium">Call ({usersInCall.size})</span>
+            <button 
+              onclick={() => isMinimized = false} 
+              class="text-white/60 hover:text-white transition p-1"
+              title="Maximize"
+            >
+              <Phone class="w-3 h-3" />
+            </button>
+          </div>
+          
+          <VideoGrid 
+            {localStream}
+            {remoteStreams}
+            {activeSpeaker}
+            currentUserId={authStore.user?.id || ''}
+            compact={true}
+            isDraggable={true}
+          />
+          
+          <div class="mt-2">
+            <VideoControls
+              {isMicOn}
+              {isVideoOn}
+              onToggleMic={toggleMic}
+              onToggleVideo={toggleVideo}
+              onEndCall={endCall}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   {/if}
 {:else if !isFullscreen && isInCall}
   <div class="space-y-3">
