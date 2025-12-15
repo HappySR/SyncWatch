@@ -14,8 +14,21 @@
   let joinRoomId = $state('');
 
   onMount(async () => {
+    // Check authentication
+    if (!authStore.user) {
+      goto('/');
+      return;
+    }
+    
     await loadRooms();
     loading = false;
+  });
+
+  // Redirect if user logs out
+  $effect(() => {
+    if (!authStore.loading && !authStore.user) {
+      goto('/');
+    }
   });
 
   async function loadRooms() {
@@ -55,17 +68,12 @@
       return;
     }
     
-    console.log('Attempting to join room with ID:', trimmedId);
-    
     try {
-      // Check if room exists first
       const { data: room, error: roomError } = await supabase
         .from('rooms')
         .select('id, name, is_public')
         .eq('id', trimmedId)
         .single();
-      
-      console.log('Room lookup result:', { room, roomError });
       
       if (roomError || !room) {
         alert('Room not found. Please check the room ID and try again.');
@@ -77,13 +85,9 @@
         return;
       }
       
-      // Join the room
       await roomStore.joinRoom(trimmedId);
-      
-      // Wait a bit for the join to complete
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Clear input and navigate
       joinRoomId = '';
       goto(`/room/${trimmedId}`);
       

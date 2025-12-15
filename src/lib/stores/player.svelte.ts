@@ -15,54 +15,40 @@ class PlayerStore {
   private channel: RealtimeChannel | null = null;
   private isProcessingEvent = false;
   private currentRoomId: string | null = null;
-
   private syncInterval: any = null;
+  private dbUpdateTimeout: any = null;
 
   subscribeToRoom(roomId: string) {
-    // Prevent duplicate subscriptions
     if (this.currentRoomId === roomId && this.channel) {
       console.log('Already subscribed to room:', roomId);
       return;
     }
 
-    // Unsubscribe from previous channel
     this.unsubscribeFromRoom();
-
     console.log('Subscribing to room:', roomId);
     this.currentRoomId = roomId;
 
-    // Create a new channel for player events
     this.channel = supabase.channel(`player:${roomId}`)
-      .on(
-        'broadcast',
-        { event: 'player-action' },
-        (payload) => {
-          this.handleRealtimeEvent(payload.payload);
-        }
-      )
-      .on(
-        'broadcast',
-        { event: 'time-sync' },
-        (payload) => {
-          // Sync time from controller
-          if (payload.payload.userId !== authStore.user?.id) {
-            const timeDiff = Math.abs(this.currentTime - payload.payload.time);
-            if (timeDiff > 1) { // Only sync if difference > 1 second
-              this.currentTime = payload.payload.time;
-              this.isSyncing = true;
-              setTimeout(() => this.isSyncing = false, 100);
-            }
+      .on('broadcast', { event: 'player-action' }, (payload) => {
+        this.handleRealtimeEvent(payload.payload);
+      })
+      .on('broadcast', { event: 'time-sync' }, (payload) => {
+        if (payload.payload.userId !== authStore.user?.id) {
+          const timeDiff = Math.abs(this.currentTime - payload.payload.time);
+          if (timeDiff > 2) {
+            this.currentTime = payload.payload.time;
+            this.isSyncing = true;
+            setTimeout(() => this.isSyncing = false, 100);
           }
         }
-      )
+      })
       .subscribe((status) => {
         console.log('Player channel status:', status);
       });
 
-    // Start periodic time sync (every 5 seconds for smoother experience)
+    // Periodic time sync every 3 seconds (reduced from 5)
     this.syncInterval = setInterval(async () => {
       if (this.canControl() && this.isPlaying) {
-        // Broadcast to other clients
         this.channel?.send({
           type: 'broadcast',
           event: 'time-sync',
@@ -72,20 +58,8 @@ class PlayerStore {
             timestamp: Date.now()
           }
         });
-
-        // Also update database so new joiners get correct time
-        if (roomStore.currentRoom) {
-          await supabase
-            .from('rooms')
-            .update({
-              video_time: this.currentTime,
-              is_playing: this.isPlaying,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', roomStore.currentRoom.id);
-        }
       }
-    }, 5000);
+    }, 3000);
   }
 
   unsubscribeFromRoom() {
@@ -98,10 +72,13 @@ class PlayerStore {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+    if (this.dbUpdateTimeout) {
+      clearTimeout(this.dbUpdateTimeout);
+      this.dbUpdateTimeout = null;
+    }
   }
 
   handleRealtimeEvent(event: any) {
-    // Don't process our own events
     if (event.userId === authStore.user?.id || this.isProcessingEvent) {
       return;
     }
@@ -166,45 +143,50 @@ class PlayerStore {
 
     console.log('Broadcasting event:', payload);
 
-    // Broadcast to all room members instantly
+    // Broadcast instantly
     await this.channel.send({
       type: 'broadcast',
       event: 'player-action',
       payload
     });
 
-    // Also update room state in database for persistence
-    await this.updateRoomState(type, data);
+    // Update database immediately for persistence
+    await this.updateRoomStateInDatabase(type, data);
   }
 
-  async updateRoomState(type: string, data: any) {
+  async updateRoomStateInDatabase(type: string, data: any) {
     if (!roomStore.currentRoom) return;
 
+    // Clear any pending timeout
+    if (this.dbUpdateTimeout) {
+      clearTimeout(this.dbUpdateTimeout);
+    }
+
+    const updates: any = {
+      last_updated: new Date().toISOString()
+    };
+
+    switch (type) {
+      case 'play':
+        updates.is_playing = true;
+        updates.video_time = data.time ?? this.currentTime;
+        break;
+      case 'pause':
+        updates.is_playing = false;
+        updates.video_time = data.time ?? this.currentTime;
+        break;
+      case 'seek':
+        updates.video_time = data.time ?? this.currentTime;
+        break;
+      case 'change_video':
+        updates.current_video_url = data.url;
+        updates.current_video_type = data.videoType;
+        updates.video_time = 0;
+        updates.is_playing = false;
+        break;
+    }
+
     try {
-      const updates: any = {
-        updated_at: new Date().toISOString()
-      };
-
-      switch (type) {
-        case 'play':
-          updates.is_playing = true;
-          updates.video_time = data.time ?? this.currentTime;
-          break;
-        case 'pause':
-          updates.is_playing = false;
-          updates.video_time = data.time ?? this.currentTime;
-          break;
-        case 'seek':
-          updates.video_time = data.time ?? this.currentTime;
-          break;
-        case 'change_video':
-          updates.current_video_url = data.url;
-          updates.current_video_type = data.videoType;
-          updates.video_time = 0;
-          updates.is_playing = false;
-          break;
-      }
-
       const { error } = await supabase
         .from('rooms')
         .update(updates)
@@ -213,7 +195,7 @@ class PlayerStore {
       if (error) {
         console.error('Database update error:', error);
       } else {
-        console.log('Room state updated in database:', updates);
+        console.log('✅ Room state saved to database:', updates);
       }
     } catch (error) {
       console.error('Failed to update room state:', error);
@@ -223,93 +205,42 @@ class PlayerStore {
   async play() {
     if (!this.canControl()) return;
     
-    console.log('Play action triggered');
+    console.log('▶️ Play action triggered');
     this.isPlaying = true;
     await this.broadcastEvent('play', { time: this.currentTime });
-    
-    // Immediately update database
-    if (roomStore.currentRoom) {
-      await supabase
-        .from('rooms')
-        .update({
-          is_playing: true,
-          video_time: this.currentTime,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', roomStore.currentRoom.id);
-    }
   }
 
   async pause() {
     if (!this.canControl()) return;
     
-    console.log('Pause action triggered');
+    console.log('⏸️ Pause action triggered');
     this.isPlaying = false;
     await this.broadcastEvent('pause', { time: this.currentTime });
-    
-    // Immediately update database
-    if (roomStore.currentRoom) {
-      await supabase
-        .from('rooms')
-        .update({
-          is_playing: false,
-          video_time: this.currentTime,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', roomStore.currentRoom.id);
-    }
   }
 
   async seek(time: number) {
     if (!this.canControl()) return;
     
-    console.log('Seek action triggered to:', time);
+    console.log('⏩ Seek action triggered to:', time);
     this.currentTime = time;
     await this.broadcastEvent('seek', { time });
-    
-    // Immediately update database
-    if (roomStore.currentRoom) {
-      await supabase
-        .from('rooms')
-        .update({
-          video_time: time,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', roomStore.currentRoom.id);
-    }
   }
 
   async changeVideo(url: string, type: 'youtube' | 'direct') {
     if (!this.canControl()) return;
     
-    console.log('Change video triggered:', url, type);
+    console.log('🎬 Change video triggered:', url, type);
+    
+    // Update local state first for immediate UI feedback
     this.videoUrl = url;
     this.videoType = type;
     this.currentTime = 0;
     this.isPlaying = false;
     
-    // Broadcast to connected clients
+    // Broadcast and save to database
     await this.broadcastEvent('change_video', { url, videoType: type });
     
-    // Also directly update database to ensure it's saved
-    if (roomStore.currentRoom) {
-      const { error } = await supabase
-        .from('rooms')
-        .update({
-          current_video_url: url,
-          current_video_type: type,
-          video_time: 0,
-          is_playing: false,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', roomStore.currentRoom.id);
-      
-      if (error) {
-        console.error('Failed to save video to database:', error);
-      } else {
-        console.log('Video saved to database successfully');
-      }
-    }
+    console.log('✅ Video change complete');
   }
 
   canControl(): boolean {
@@ -317,7 +248,7 @@ class PlayerStore {
     
     const member = roomStore.members.find(m => m.user_id === authStore.user?.id);
     if (!member?.has_controls) {
-      console.log('User does not have controls');
+      console.log('❌ User does not have controls');
       return false;
     }
     
@@ -327,63 +258,62 @@ class PlayerStore {
   async syncWithRoom() {
     if (!roomStore.currentRoom) return;
 
-    console.log('Syncing with room state:', roomStore.currentRoom);
-
+    console.log('🔄 Syncing with room state...');
     this.isSyncing = true;
 
-    // Fetch the most recent room state from database
-    const { data: freshRoom, error } = await supabase
-      .from('rooms')
-      .select('*')
-      .eq('id', roomStore.currentRoom.id)
-      .single();
+    try {
+      // Fetch fresh room state
+      const { data: freshRoom, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', roomStore.currentRoom.id)
+        .single();
 
-    if (error) {
-      console.error('Error fetching room state:', error);
-      this.isSyncing = false;
-      return;
-    }
-
-    if (freshRoom) {
-      console.log('Fresh room data:', freshRoom);
-      
-      // Set video URL and type
-      this.videoUrl = freshRoom.current_video_url;
-      
-      // Handle video type conversion
-      const roomVideoType = freshRoom.current_video_type;
-      if (roomVideoType === 'youtube' || roomVideoType === 'direct') {
-        this.videoType = roomVideoType;
-      } else if (roomVideoType === 'drive') {
-        this.videoType = 'direct';
-      } else {
-        this.videoType = null;
+      if (error) {
+        console.error('Error fetching room state:', error);
+        return;
       }
-      
-      // Sync current time and playing state
-      this.currentTime = freshRoom.video_time || 0;
-      this.isPlaying = freshRoom.is_playing || false;
-      this.duration = freshRoom.duration || 0;
-      
-      console.log('Synced video state:', {
-        url: this.videoUrl,
-        type: this.videoType,
-        time: this.currentTime,
-        playing: this.isPlaying,
-        duration: this.duration
-      });
-    }
 
-    // Subscribe to the room's broadcast channel BEFORE releasing sync flag
-    if (roomStore.currentRoom.id) {
-      this.subscribeToRoom(roomStore.currentRoom.id);
-    }
+      if (freshRoom) {
+        console.log('📦 Fresh room data:', freshRoom);
+        
+        // Set video URL and type
+        this.videoUrl = freshRoom.current_video_url;
+        
+        // Handle video type
+        const roomVideoType = freshRoom.current_video_type;
+        if (roomVideoType === 'youtube' || roomVideoType === 'direct') {
+          this.videoType = roomVideoType;
+        } else if (roomVideoType === 'drive') {
+          this.videoType = 'direct';
+        } else {
+          this.videoType = null;
+        }
+        
+        // Sync state
+        this.currentTime = freshRoom.video_time || 0;
+        this.isPlaying = freshRoom.is_playing || false;
+        
+        console.log('✅ Synced state:', {
+          url: this.videoUrl,
+          type: this.videoType,
+          time: this.currentTime,
+          playing: this.isPlaying
+        });
+      }
 
-    // Keep syncing flag true longer to ensure video loads and seeks properly
-    setTimeout(() => {
-      console.log('Releasing sync flag');
-      this.isSyncing = false;
-    }, 3000); // Increased from 1000ms to 3000ms
+      // Subscribe to room channel
+      if (roomStore.currentRoom.id) {
+        this.subscribeToRoom(roomStore.currentRoom.id);
+      }
+
+    } finally {
+      // Keep sync flag longer for video to load properly
+      setTimeout(() => {
+        console.log('✅ Sync complete');
+        this.isSyncing = false;
+      }, 2000);
+    }
   }
 
   setVolume(vol: number) {
@@ -392,10 +322,6 @@ class PlayerStore {
 
   cleanup() {
     this.unsubscribeFromRoom();
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
   }
 }
 

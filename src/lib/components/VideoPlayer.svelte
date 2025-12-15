@@ -17,16 +17,12 @@
 
   let lastYtTime = 0;
   let ytSyncInterval: any = null;
+  let isYouTubeReady = $state(false);
 
   onMount(() => {
     loadYouTubeAPI();
-    
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    
-    return () => {
-      if (ytSyncInterval) clearInterval(ytSyncInterval);
-    };
   });
 
   onDestroy(() => {
@@ -69,22 +65,29 @@
       document.head.appendChild(tag);
       
       (window as any).onYouTubeIframeAPIReady = () => {
+        console.log('✅ YouTube API Ready');
         if (videoType === 'youtube' && videoUrl) {
           initYouTubePlayer();
         }
       };
+    } else if ((window as any).YT && (window as any).YT.Player) {
+      // API already loaded
+      if (videoType === 'youtube' && videoUrl) {
+        initYouTubePlayer();
+      }
     }
   }
 
   function getYouTubeVideoId(url: string): string | null {
     const patterns = [
       /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/,
-      /youtube\.com\/embed\/([^&\s]+)/
+      /youtube\.com\/embed\/([^&\s]+)/,
+      /^([a-zA-Z0-9_-]{11})$/
     ];
     
     for (const pattern of patterns) {
       const match = url.match(pattern);
-      if (match) return match[1];
+      if (match) return match[1].substring(0, 11); // Ensure only 11 chars
     }
     return null;
   }
@@ -98,16 +101,19 @@
       return;
     }
 
-    console.log('Initializing YouTube player with video ID:', videoId);
+    console.log('🎬 Initializing YouTube player:', videoId);
 
     if (youtubePlayer) {
       youtubePlayer.destroy();
+      isYouTubeReady = false;
     }
     
     if (ytSyncInterval) {
       clearInterval(ytSyncInterval);
+      ytSyncInterval = null;
     }
 
+    // Create new player
     youtubePlayer = new (window as any).YT.Player('youtube-player', {
       videoId,
       playerVars: {
@@ -116,22 +122,25 @@
         rel: 0,
         fs: 0,
         playsinline: 1,
-        autoplay: 0
+        autoplay: 0,
+        enablejsapi: 1,
+        // These help reduce buffering
+        iv_load_policy: 3,
+        disablekb: 0
       },
       events: {
-        onReady: () => {
-          console.log('YouTube player ready');
-          console.log('Current playerStore state:', {
-            currentTime,
-            isPlaying,
-            isSyncing: playerStore.isSyncing
-          });
-          
+        onReady: (event: any) => {
+          console.log('✅ YouTube player ready');
+          isYouTubeReady = true;
           lastYtTime = currentTime;
           
-          // Sync player state after a short delay to ensure player is fully loaded
+          // Set quality to auto (best for connection)
+          try {
+            event.target.setPlaybackQuality('default');
+          } catch (e) {}
+          
           setTimeout(() => {
-            syncPlayer();
+            syncYouTubePlayer();
             startYouTubeMonitoring();
           }, 500);
         },
@@ -139,31 +148,36 @@
           const YT = (window as any).YT;
           
           if (playerStore.isSyncing) {
-            console.log('Ignoring state change during sync');
             return;
           }
           
+          // Only process user actions, not programmatic changes
           if (event.data === YT.PlayerState.PLAYING && !isPlaying) {
-            console.log('YouTube play detected');
             const currentYtTime = youtubePlayer.getCurrentTime();
             playerStore.currentTime = currentYtTime;
             lastYtTime = currentYtTime;
             playerStore.play();
           } else if (event.data === YT.PlayerState.PAUSED && isPlaying) {
-            console.log('YouTube pause detected');
             const currentYtTime = youtubePlayer.getCurrentTime();
             playerStore.currentTime = currentYtTime;
             lastYtTime = currentYtTime;
             playerStore.pause();
           }
+        },
+        onError: (event: any) => {
+          console.error('YouTube player error:', event.data);
         }
       }
     });
   }
 
   function startYouTubeMonitoring() {
+    if (ytSyncInterval) {
+      clearInterval(ytSyncInterval);
+    }
+
     ytSyncInterval = setInterval(() => {
-      if (!youtubePlayer || !youtubePlayer.getCurrentTime) return;
+      if (!youtubePlayer || !youtubePlayer.getCurrentTime || !isYouTubeReady) return;
       
       try {
         const ytTime = youtubePlayer.getCurrentTime();
@@ -173,94 +187,81 @@
           playerStore.duration = duration;
         }
         
-        // Only detect intentional seeks (jumps > 3 seconds)
+        // Only detect intentional seeks (jumps > 2 seconds)
         const timeDiff = Math.abs(ytTime - lastYtTime);
-        if (timeDiff > 3 && !playerStore.isSyncing) {
-          console.log('YouTube seek detected:', lastYtTime, '→', ytTime);
+        if (timeDiff > 2 && !playerStore.isSyncing) {
+          console.log('⏩ YouTube seek detected:', lastYtTime, '→', ytTime);
           playerStore.seek(ytTime);
         }
         
         lastYtTime = ytTime;
         
-        // Update playerStore currentTime for progress bar
-        if (!playerStore.isSyncing) {
+        // Update current time smoothly
+        if (!playerStore.isSyncing && isPlaying) {
           playerStore.currentTime = ytTime;
         }
       } catch (e) {
-        console.log('YouTube monitoring error:', e);
+        // Ignore errors during monitoring
       }
-    }, 1000); // Changed from 300ms to 1000ms for smoother experience
+    }, 500); // Check every 500ms for smooth playback
   }
 
-  function syncPlayer() {
-    if (videoType === 'youtube' && youtubePlayer && youtubePlayer.getPlayerState) {
-      try {
-        const state = youtubePlayer.getPlayerState();
-        const ytTime = youtubePlayer.getCurrentTime ? youtubePlayer.getCurrentTime() : 0;
-        
-        console.log('Syncing YouTube:', { isPlaying, currentTime, ytTime, state });
-        
-        // Only sync if difference is significant (>2 seconds) to avoid jitter
-        const timeDiff = Math.abs(ytTime - currentTime);
-        if (timeDiff > 2) {
-          console.log('Seeking YouTube to:', currentTime);
-          youtubePlayer.seekTo(currentTime, true);
-          lastYtTime = currentTime;
-        }
-        
-        if (isPlaying && state !== 1 && state !== 3) {
-          console.log('Starting YouTube playback');
-          youtubePlayer.playVideo();
-        } else if (!isPlaying && state === 1) {
-          console.log('Pausing YouTube playback');
-          youtubePlayer.pauseVideo();
-        }
-      } catch (e) {
-        console.log('Sync error:', e);
-      }
-    } else if (videoType === 'direct' && videoElement) {
-      if (Math.abs(videoElement.currentTime - currentTime) > 1) {
-        videoElement.currentTime = currentTime;
+  function syncYouTubePlayer() {
+    if (!youtubePlayer || !isYouTubeReady || videoType !== 'youtube') return;
+
+    try {
+      const state = youtubePlayer.getPlayerState();
+      const ytTime = youtubePlayer.getCurrentTime ? youtubePlayer.getCurrentTime() : 0;
+      
+      console.log('🔄 Syncing YouTube:', { isPlaying, currentTime, ytTime, state });
+      
+      // Seek if time difference is significant
+      const timeDiff = Math.abs(ytTime - currentTime);
+      if (timeDiff > 1) {
+        console.log('⏩ Seeking YouTube to:', currentTime);
+        youtubePlayer.seekTo(currentTime, true);
+        lastYtTime = currentTime;
       }
       
-      if (isPlaying && videoElement.paused) {
-        videoElement.play().catch(e => console.log('Play failed:', e));
-      } else if (!isPlaying && !videoElement.paused) {
-        videoElement.pause();
+      // Sync play/pause state
+      const YT = (window as any).YT;
+      if (isPlaying && state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING) {
+        console.log('▶️ Starting YouTube playback');
+        youtubePlayer.playVideo();
+      } else if (!isPlaying && state === YT.PlayerState.PLAYING) {
+        console.log('⏸️ Pausing YouTube playback');
+        youtubePlayer.pauseVideo();
       }
+    } catch (e) {
+      console.log('Sync error:', e);
     }
   }
 
   $effect(() => {
     if (videoUrl && videoType === 'youtube') {
-      console.log('Effect triggered: Initializing YouTube player');
-      console.log('Video URL:', videoUrl);
-      console.log('Current time:', currentTime);
-      console.log('Is playing:', isPlaying);
+      console.log('🔄 Video URL changed, initializing player');
+      isYouTubeReady = false;
       initYouTubePlayer();
     }
   });
 
   $effect(() => {
-    if (playerStore.isSyncing) {
-      syncPlayer();
+    if (playerStore.isSyncing && isYouTubeReady) {
+      syncYouTubePlayer();
     }
   });
 
-  // Set video source for direct videos
+  // Direct video handling
   $effect(() => {
     if (videoElement && videoUrl && videoType === 'direct') {
       videoElement.src = videoUrl;
     }
   });
 
-  // Sync direct video currentTime to playerStore and handle initial sync
   $effect(() => {
     if (videoType === 'direct' && videoElement) {
-      // Initial sync when video loads
       const handleLoadedMetadata = () => {
         if (playerStore.isSyncing && Math.abs(videoElement!.currentTime - currentTime) > 0.5) {
-          console.log('Initial video sync to:', currentTime);
           videoElement!.currentTime = currentTime;
           if (isPlaying) {
             videoElement!.play().catch(e => console.log('Autoplay prevented:', e));
@@ -270,7 +271,6 @@
 
       videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
 
-      // Continuous sync during playback
       if (!playerStore.isSyncing) {
         const interval = setInterval(() => {
           if (videoElement && isPlaying) {
@@ -307,7 +307,6 @@
   {:else if videoType === 'youtube'}
     <div id="youtube-player" class="w-full h-full"></div>
     
-    <!-- Fullscreen button - hidden by default, shows on hover/touch -->
     <button
       onclick={toggleFullscreen}
       class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-10 opacity-0 group-hover:opacity-100 focus:opacity-100 md:opacity-100"
@@ -349,7 +348,6 @@
       <track kind="captions" />
     </video>
     
-    <!-- Fullscreen button - hidden by default, shows on hover/touch -->
     <button
       onclick={toggleFullscreen}
       class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-10 opacity-0 group-hover:opacity-100 focus:opacity-100 md:opacity-100"
