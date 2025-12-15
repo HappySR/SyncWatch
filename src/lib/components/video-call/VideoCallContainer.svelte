@@ -31,7 +31,9 @@
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' }
   ];
 
   let audioContexts = $state<Map<string, AudioContext>>(new Map());
@@ -256,7 +258,9 @@
   function monitorAudioLevels(stream: MediaStream, userId: string) {
     try {
       const existingContext = audioContexts.get(userId);
-      if (existingContext) existingContext.close();
+      if (existingContext && existingContext.state !== 'closed') {
+        return; // Already monitoring this user
+      }
 
       const audioContext = new AudioContext();
       audioContexts.set(userId, audioContext);
@@ -269,9 +273,14 @@
       analyser.fftSize = 1024;
       microphone.connect(analyser);
 
+      let animationFrameId: number;
+
       function checkAudioLevel() {
         if (!isInCall) {
-          audioContext.close();
+          cancelAnimationFrame(animationFrameId);
+          if (audioContext.state !== 'closed') {
+            audioContext.close().catch(() => {});
+          }
           audioContexts.delete(userId);
           return;
         }
@@ -279,7 +288,7 @@
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
         if (average > 30) activeSpeaker = userId;
-        requestAnimationFrame(checkAudioLevel);
+        animationFrameId = requestAnimationFrame(checkAudioLevel);
       }
 
       checkAudioLevel();
@@ -496,103 +505,110 @@
   onDecline={declineCall}
 />
 
-{#if isFullscreen && isInCall}
-  {#if !isMinimized}
-    <div class="fixed bottom-4 right-4 z-50 w-96 transition-all duration-300">
-      <div class="bg-black/90 backdrop-blur-md rounded-xl overflow-hidden border border-white/20 shadow-2xl">
-        <div class="p-3">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-white text-sm font-medium">Call ({usersInCall.size})</span>
-            <div class="flex gap-2">
-              <button 
-                onclick={() => isMinimized = true} 
-                class="text-white/60 hover:text-white transition p-1"
-                title="Minimize"
-              >
-                <Minimize2 class="w-4 h-4" />
-              </button>
+{#if isInCall}
+  <!-- Always render video grid when in call, just change visibility/position -->
+  <div class="video-call-container" class:fullscreen={isFullscreen} class:minimized={isFullscreen && isMinimized}>
+    {#if isFullscreen}
+      {#if !isMinimized}
+        <div class="fixed bottom-4 right-4 z-50 w-96 transition-all duration-300">
+          <div class="bg-black/90 backdrop-blur-md rounded-xl overflow-hidden border border-white/20 shadow-2xl">
+            <div class="p-3">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-white text-sm font-medium">Call ({usersInCall.size})</span>
+                <div class="flex gap-2">
+                  <button 
+                    onclick={() => isMinimized = true} 
+                    class="text-white/60 hover:text-white transition p-1"
+                    title="Minimize"
+                  >
+                    <Minimize2 class="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <VideoGrid 
+                {localStream}
+                {remoteStreams}
+                {activeSpeaker}
+                currentUserId={authStore.user?.id || ''}
+                compact={true}
+                isDraggable={false}
+              />
+
+              <VideoControls
+                {isMicOn}
+                {isVideoOn}
+                onToggleMic={toggleMic}
+                onToggleVideo={toggleVideo}
+                onEndCall={endCall}
+              />
             </div>
           </div>
-
-          <VideoGrid 
-            {localStream}
-            {remoteStreams}
-            {activeSpeaker}
-            currentUserId={authStore.user?.id || ''}
-            compact={true}
-            isDraggable={false}
-          />
-
-          <VideoControls
-            {isMicOn}
-            {isVideoOn}
-            onToggleMic={toggleMic}
-            onToggleVideo={toggleVideo}
-            onEndCall={endCall}
-          />
         </div>
-      </div>
-    </div>
-  {:else}
-    <!-- Minimized video call - draggable -->
-    <div class="fixed bottom-4 right-4 z-50 w-64">
-      <div class="bg-black/90 backdrop-blur-md rounded-xl overflow-hidden border border-white/20 shadow-2xl">
-        <div class="p-2">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-white text-xs font-medium">Call ({usersInCall.size})</span>
-            <button 
-              onclick={() => isMinimized = false} 
-              class="text-white/60 hover:text-white transition p-1"
-              title="Maximize"
-            >
-              <Phone class="w-3 h-3" />
-            </button>
-          </div>
-          
-          <VideoGrid 
-            {localStream}
-            {remoteStreams}
-            {activeSpeaker}
-            currentUserId={authStore.user?.id || ''}
-            compact={true}
-            isDraggable={true}
-          />
-          
-          <div class="mt-2">
-            <VideoControls
-              {isMicOn}
-              {isVideoOn}
-              onToggleMic={toggleMic}
-              onToggleVideo={toggleVideo}
-              onEndCall={endCall}
-            />
+      {:else}
+        <!-- Minimized - show as small draggable window -->
+        <div class="fixed bottom-4 right-4 z-50 w-64">
+          <div class="bg-black/90 backdrop-blur-md rounded-xl overflow-hidden border border-white/20 shadow-2xl">
+            <div class="p-2">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-white text-xs font-medium">Call ({usersInCall.size})</span>
+                <button 
+                  onclick={() => isMinimized = false} 
+                  class="text-white/60 hover:text-white transition p-1"
+                  title="Maximize"
+                >
+                  <Phone class="w-3 h-3" />
+                </button>
+              </div>
+              
+              <VideoGrid 
+                {localStream}
+                {remoteStreams}
+                {activeSpeaker}
+                currentUserId={authStore.user?.id || ''}
+                compact={true}
+                isDraggable={false}
+              />
+              
+              <div class="mt-2">
+                <VideoControls
+                  {isMicOn}
+                  {isVideoOn}
+                  onToggleMic={toggleMic}
+                  onToggleVideo={toggleVideo}
+                  onEndCall={endCall}
+                />
+              </div>
+            </div>
           </div>
         </div>
+      {/if}
+    {:else}
+      <!-- Non-fullscreen view -->
+      <div class="space-y-3">
+        <div class="text-text-secondary text-sm text-center">
+          {usersInCall.size} {usersInCall.size === 1 ? 'person' : 'people'} in call
+        </div>
+
+        <VideoGrid 
+          {localStream}
+          {remoteStreams}
+          {activeSpeaker}
+          currentUserId={authStore.user?.id || ''}
+        />
+
+        <VideoControls
+          {isMicOn}
+          {isVideoOn}
+          onToggleMic={toggleMic}
+          onToggleVideo={toggleVideo}
+          onEndCall={endCall}
+        />
       </div>
-    </div>
-  {/if}
-{:else if !isFullscreen && isInCall}
-  <div class="space-y-3">
-    <div class="text-text-secondary text-sm text-center">
-      {usersInCall.size} {usersInCall.size === 1 ? 'person' : 'people'} in call
-    </div>
-
-    <VideoGrid 
-      {localStream}
-      {remoteStreams}
-      {activeSpeaker}
-      currentUserId={authStore.user?.id || ''}
-    />
-
-    <VideoControls
-      {isMicOn}
-      {isVideoOn}
-      onToggleMic={toggleMic}
-      onToggleVideo={toggleVideo}
-      onEndCall={endCall}
-    />
+    {/if}
   </div>
-{:else if !isInCall}
+{:else}
+  <!-- Not in call - show start button -->
   <button
     onclick={startCall}
     class="w-full bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition flex items-center justify-center gap-2"
@@ -601,3 +617,11 @@
     Start Video Call
   </button>
 {/if}
+
+<style>  
+  .video-call-container :global(video),
+  .video-call-container :global(audio) {
+    /* Keep media elements alive */
+    visibility: visible !important;
+  }
+</style>
