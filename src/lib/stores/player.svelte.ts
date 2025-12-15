@@ -155,7 +155,10 @@ class PlayerStore {
   }
 
   async updateRoomStateInDatabase(type: string, data: any) {
-    if (!roomStore.currentRoom) return;
+    if (!roomStore.currentRoom) {
+      console.error('❌ No current room to update');
+      return;
+    }
 
     // Clear any pending timeout
     if (this.dbUpdateTimeout) {
@@ -179,11 +182,10 @@ class PlayerStore {
         updates.video_time = data.time ?? this.currentTime;
         break;
       case 'change_video':
-        updates.current_video_url = data.url;
-        updates.current_video_type = data.videoType;
-        updates.video_time = 0;
-        updates.is_playing = false;
-        break;
+        // ⭐ KEY CHANGE: Don't update video in this function
+        // It's now handled directly in changeVideo()
+        console.log('ℹ️ Skipping change_video in updateRoomStateInDatabase');
+        return;
     }
 
     try {
@@ -193,12 +195,12 @@ class PlayerStore {
         .eq('id', roomStore.currentRoom.id);
 
       if (error) {
-        console.error('Database update error:', error);
+        console.error('❌ Database update error:', error);
       } else {
         console.log('✅ Room state saved to database:', updates);
       }
     } catch (error) {
-      console.error('Failed to update room state:', error);
+      console.error('❌ Failed to update room state:', error);
     }
   }
 
@@ -237,7 +239,29 @@ class PlayerStore {
     this.currentTime = 0;
     this.isPlaying = false;
     
-    // Broadcast and save to database
+    // Save to database FIRST, then broadcast
+    if (roomStore.currentRoom) {
+      const { error } = await supabase
+        .from('rooms')
+        .update({
+          current_video_url: url,
+          current_video_type: type,
+          video_time: 0,
+          is_playing: false,
+          last_updated: new Date().toISOString()
+        })
+        .eq('id', roomStore.currentRoom.id);
+      
+      if (error) {
+        console.error('❌ Failed to save video to database:', error);
+        alert('Failed to save video. Please try again.');
+        return;
+      }
+      
+      console.log('✅ Video saved to database successfully');
+    }
+    
+    // Then broadcast to other users
     await this.broadcastEvent('change_video', { url, videoType: type });
     
     console.log('✅ Video change complete');
@@ -276,6 +300,13 @@ class PlayerStore {
 
       if (freshRoom) {
         console.log('📦 Fresh room data:', freshRoom);
+        console.log('🔍 Video URL from DB:', freshRoom.current_video_url);
+        console.log('🔍 Video Type from DB:', freshRoom.current_video_type);
+        
+        // Add validation
+        if (!freshRoom.current_video_url) {
+          console.warn('⚠️ No video URL found in database');
+        }
         
         // Set video URL and type
         this.videoUrl = freshRoom.current_video_url;
@@ -290,7 +321,10 @@ class PlayerStore {
           this.videoType = null;
         }
         
-        // ⭐ KEY CHANGE: Always sync to current time, not 0
+        console.log('🎬 After sync - videoUrl:', this.videoUrl);
+        console.log('🎬 After sync - videoType:', this.videoType);
+        
+        // Always sync to current time, not 0
         // Calculate current time based on when video was last updated
         let syncTime = freshRoom.video_time || 0;
         

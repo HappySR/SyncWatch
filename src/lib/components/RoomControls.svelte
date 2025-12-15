@@ -48,7 +48,7 @@
       }
       
       processedUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      console.log('Processed YouTube URL:', processedUrl);
+      console.log('✅ Processed YouTube URL:', processedUrl);
       
     } else {
       detectedType = 'direct';
@@ -56,14 +56,20 @@
       if (!processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
         processedUrl = 'https://' + processedUrl;
       }
+      console.log('✅ Processed Direct URL:', processedUrl);
     }
 
     try {
+      console.log('📤 Sending video to playerStore:', { url: processedUrl, type: detectedType });
       await playerStore.changeVideo(processedUrl, detectedType);
+      
+      // ⭐ KEY CHANGE: Wait a bit to ensure database update completes
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      console.log('✅ Video loaded successfully');
       videoUrl = '';
-      console.log('Video loaded successfully:', { url: processedUrl, type: detectedType });
     } catch (error) {
-      console.error('Failed to load video:', error);
+      console.error('❌ Failed to load video:', error);
       alert('Failed to load video. Please try again.');
     }
   }
