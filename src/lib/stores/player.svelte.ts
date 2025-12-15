@@ -232,7 +232,11 @@ class PlayerStore {
     if (!this.canControl()) return;
     
     console.log('🎬 Change video triggered:', url, type);
-    
+
+    if (this.isPlaying) {
+      this.isPlaying = false;
+    }
+        
     // Update local state first for immediate UI feedback
     this.videoUrl = url;
     this.videoType = type;

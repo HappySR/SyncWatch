@@ -309,7 +309,7 @@
     
     <button
       onclick={toggleFullscreen}
-      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-10 opacity-0 group-hover:opacity-100 focus:opacity-100 md:opacity-100"
+      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-100 opacity-100 pointer-events-auto"
       title="Toggle Fullscreen"
       aria-label="Toggle Fullscreen"
     >
@@ -350,7 +350,7 @@
     
     <button
       onclick={toggleFullscreen}
-      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-10 opacity-0 group-hover:opacity-100 focus:opacity-100 md:opacity-100"
+      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-100 opacity-100 pointer-events-auto"
       title="Toggle Fullscreen"
       aria-label="Toggle Fullscreen"
     >
