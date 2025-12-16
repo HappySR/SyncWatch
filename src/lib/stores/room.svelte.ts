@@ -250,11 +250,16 @@ class RoomStore {
       supabase.removeChannel(this.roomChannel);
     }
 
-    console.log('Subscribing to room updates:', roomId);
+    console.log('🔌 Subscribing to room updates:', roomId);
 
-    // Subscribe to room updates and member changes
+    // Use postgres_changes for instant updates
     this.roomChannel = supabase
-      .channel(`room:${roomId}`)
+      .channel(`room:${roomId}`, {
+        config: {
+          broadcast: { ack: false },
+          presence: { key: '' },
+        },
+      })
       .on(
         'postgres_changes',
         {
@@ -264,25 +269,8 @@ class RoomStore {
           filter: `id=eq.${roomId}`
         },
         (payload) => {
-          console.log('🔄 Room updated from database:', payload.new);
-          const updatedRoom = payload.new as Room;
-          this.currentRoom = updatedRoom;
-          
-          // Import playerStore dynamically to avoid circular dependency
-          import('./player.svelte').then(({ playerStore }) => {
-            // Check if video changed
-            if (updatedRoom.current_video_url !== playerStore.videoUrl) {
-              console.log('📺 Video URL changed in room, syncing...');
-              playerStore.videoUrl = updatedRoom.current_video_url;
-              playerStore.videoType = updatedRoom.current_video_type as 'youtube' | 'direct' | null;
-              playerStore.currentTime = updatedRoom.video_time || 0;
-              playerStore.isPlaying = updatedRoom.is_playing || false;
-              playerStore.isSyncing = true;
-              setTimeout(() => {
-                playerStore.isSyncing = false;
-              }, 2000);
-            }
-          });
+          console.log('🔄 Room updated:', payload.new);
+          this.currentRoom = payload.new as Room;
         }
       )
       .on(
@@ -294,12 +282,12 @@ class RoomStore {
           filter: `room_id=eq.${roomId}`
         },
         () => {
-          console.log('Members changed, reloading...');
+          console.log('👥 Members changed');
           this.loadMembers(roomId);
         }
       )
       .subscribe((status) => {
-        console.log('Room channel status:', status);
+        console.log('✅ Room channel:', status);
       });
   }
 
