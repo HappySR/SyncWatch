@@ -169,17 +169,16 @@
               height: { ideal: 720, max: 1080, min: 360 }
             }
           },
-          // Disable lobby/authentication requirements
+          // Remove authentication barriers
           enableLobbyChat: false,
           disableSelfView: false,
           disableSelfViewSettings: false,
           startAudioOnly: false,
           requireDisplayName: false,
           enableInsecureRoomNameWarning: false,
-          // Disable features that require authentication
-          disableInviteFunctions: true,
-          doNotStoreRoom: true,
-          // Security settings to avoid lobby
+          // Allow proper authentication flow
+          disableInviteFunctions: false,  // Changed from true
+          doNotStoreRoom: false,  // Changed from true
           enableLobby: false,
           enableForcedReload: false
         },
