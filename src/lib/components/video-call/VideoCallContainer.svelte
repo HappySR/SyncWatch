@@ -61,16 +61,12 @@
   }
 
   function handleCallInvitation(invitation: CallInvitation) {
-    // Don't show invitation to the person who started the call
     if (invitation.from === authStore.user?.id) return;
-    
-    // Don't show if already in call
     if (isInCall) return;
     
     console.log('📞 Incoming call from:', invitation.fromName);
     incomingCall = invitation;
     
-    // Auto-dismiss after 30 seconds
     setTimeout(() => {
       if (incomingCall?.timestamp === invitation.timestamp) {
         incomingCall = null;
@@ -101,7 +97,6 @@
   }
 
   async function startCall() {
-    // Send invitation to all room members
     if (callChannel) {
       await callChannel.send({
         type: 'broadcast',
@@ -114,7 +109,8 @@
       });
     }
 
-    // Start the call
+    // Wait for container to be ready
+    await new Promise(resolve => setTimeout(resolve, 100));
     await joinCall();
   }
 
@@ -129,14 +125,23 @@
       return;
     }
 
+    // Set states first to render the container
+    isInCall = true;
+    isLoading = true;
+    incomingCall = null;
+
+    // Wait for DOM to update and render jitsiContainer
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     if (!jitsiContainer) {
-      console.error('Jitsi container not ready');
+      console.error('❌ Jitsi container not ready after waiting');
+      alert('Video call container not ready. Please try again.');
+      isInCall = false;
+      isLoading = false;
       return;
     }
 
     console.log('🎥 Starting video call...');
-    isLoading = true;
-    incomingCall = null; // Clear invitation
 
     try {
       const domain = 'meet.jit.si';
@@ -189,7 +194,6 @@
 
       jitsiApi.addEventListener('videoConferenceJoined', (data: any) => {
         console.log('✅ Joined video call:', data);
-        isInCall = true;
         isLoading = false;
       });
 
@@ -210,7 +214,6 @@
       setTimeout(() => {
         if (isLoading) {
           console.log('⏰ Timeout - assuming call started');
-          isInCall = true;
           isLoading = false;
         }
       }, 5000);
@@ -256,63 +259,88 @@
   />
 {/if}
 
-{#if isFullscreen && isInCall}
-  <!-- Fullscreen mode - show in corner -->
-  {#if !isMinimized}
-    <div class="fixed bottom-4 right-4 z-50 w-100 h-75 transition-all duration-300">
-      <div class="bg-black rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl h-full flex flex-col">
-        <div class="bg-black/90 px-3 py-2 flex items-center justify-between border-b border-white/10">
-          <span class="text-white text-sm font-medium">Video Call</span>
-          <div class="flex gap-2">
-            <button 
-              onclick={toggleMinimize} 
-              class="text-white/60 hover:text-white transition p-1 rounded hover:bg-white/10"
-              title="Minimize"
-            >
-              <Minimize2 class="w-4 h-4" />
-            </button>
-            <button 
-              onclick={endCall} 
-              class="text-red-400 hover:text-red-300 transition p-1 rounded hover:bg-red-500/10"
-              title="End call"
-            >
-              <X class="w-4 h-4" />
-            </button>
+<!-- Always render container when in call, visibility controlled by CSS -->
+{#if isInCall}
+  {#if isFullscreen}
+    <!-- Fullscreen mode - show in corner -->
+    {#if !isMinimized}
+      <div class="fixed bottom-4 right-4 z-50 w-100 h-75 transition-all duration-300">
+        <div class="bg-black rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl h-full flex flex-col">
+          <div class="bg-black/90 px-3 py-2 flex items-center justify-between border-b border-white/10">
+            <span class="text-white text-sm font-medium">Video Call</span>
+            <div class="flex gap-2">
+              <button 
+                onclick={toggleMinimize} 
+                class="text-white/60 hover:text-white transition p-1 rounded hover:bg-white/10"
+                title="Minimize"
+              >
+                <Minimize2 class="w-4 h-4" />
+              </button>
+              <button 
+                onclick={endCall} 
+                class="text-red-400 hover:text-red-300 transition p-1 rounded hover:bg-red-500/10"
+                title="End call"
+              >
+                <X class="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <div bind:this={jitsiContainer} class="flex-1 bg-black">
+            {#if isLoading}
+              <div class="w-full h-full flex items-center justify-center">
+                <div class="text-white text-sm flex flex-col items-center gap-2">
+                  <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Connecting...</span>
+                </div>
+              </div>
+            {/if}
           </div>
         </div>
-        <div bind:this={jitsiContainer} class="flex-1 bg-black"></div>
+      </div>
+    {:else}
+      <!-- Minimized in fullscreen -->
+      <div class="fixed bottom-4 right-4 z-50">
+        <button
+          onclick={toggleMinimize}
+          class="bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-2xl transition-all hover:scale-110 border-2 border-white/20"
+          title="Show video call"
+        >
+          <Maximize2 class="w-6 h-6" />
+        </button>
+      </div>
+      <!-- Hidden container for minimized state -->
+      <div class="hidden">
+        <div bind:this={jitsiContainer}></div>
+      </div>
+    {/if}
+  {:else}
+    <!-- Non-fullscreen mode - show normally -->
+    <div class="space-y-3">
+      <div class="text-text-secondary text-sm text-center flex items-center justify-between">
+        <span>Video Call Active</span>
+        <button
+          onclick={endCall}
+          class="text-red-400 hover:text-red-300 text-sm transition"
+        >
+          End Call
+        </button>
+      </div>
+
+      <div class="bg-black rounded-xl overflow-hidden border border-border" style="height: 400px;">
+        <div bind:this={jitsiContainer} class="w-full h-full">
+          {#if isLoading}
+            <div class="w-full h-full flex items-center justify-center">
+              <div class="text-white text-sm flex flex-col items-center gap-2">
+                <div class="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Connecting...</span>
+              </div>
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
-  {:else}
-    <!-- Minimized in fullscreen -->
-    <div class="fixed bottom-4 right-4 z-50">
-      <button
-        onclick={toggleMinimize}
-        class="bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-2xl transition-all hover:scale-110 border-2 border-white/20"
-        title="Show video call"
-      >
-        <Maximize2 class="w-6 h-6" />
-      </button>
-    </div>
   {/if}
-{:else if !isFullscreen && isInCall}
-  <!-- Non-fullscreen mode - show normally -->
-  <div class="space-y-3">
-    <div class="text-text-secondary text-sm text-center flex items-center justify-between">
-      <span>Video Call Active</span>
-      <button
-        onclick={endCall}
-        class="text-red-400 hover:text-red-300 text-sm transition"
-      >
-        End Call
-      </button>
-    </div>
-
-    <div class="bg-black rounded-xl overflow-hidden border border-border" style="height: 400px;">
-      <div bind:this={jitsiContainer} class="w-full h-full"></div>
-    </div>
-  </div>
-{:else if !isInCall}
+{:else}
   <!-- Not in call - show start button -->
   <button
     onclick={startCall}
