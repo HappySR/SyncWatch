@@ -12,6 +12,7 @@
     from: string;
     fromName: string;
     timestamp: number;
+    isModerator: boolean;
   }
 
   let isInCall = $state(false);
@@ -21,6 +22,7 @@
   let isJitsiLoaded = $state(false);
   let isLoading = $state(false);
   let incomingCall = $state<CallInvitation | null>(null);
+  let isModerator = $state(false);
   let callChannel: any;
 
   const roomName = $derived(`syncwatch-${roomStore.currentRoom?.id || 'default'}`);
@@ -97,6 +99,9 @@
   }
 
   async function startCall() {
+    // Person who starts is the moderator
+    isModerator = true;
+    
     if (callChannel) {
       await callChannel.send({
         type: 'broadcast',
@@ -104,12 +109,12 @@
         payload: {
           from: authStore.user?.id,
           fromName: authStore.profile?.display_name || authStore.user?.email || 'Someone',
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          isModerator: true
         }
       });
     }
 
-    // Wait for container to be ready
     await new Promise(resolve => setTimeout(resolve, 100));
     await joinCall();
   }
@@ -125,12 +130,10 @@
       return;
     }
 
-    // Set states first to render the container
     isInCall = true;
     isLoading = true;
     incomingCall = null;
 
-    // Wait for DOM to update and render jitsiContainer
     await new Promise(resolve => setTimeout(resolve, 100));
 
     if (!jitsiContainer) {
@@ -165,36 +168,74 @@
             video: {
               height: { ideal: 720, max: 1080, min: 360 }
             }
-          }
+          },
+          // Disable lobby/authentication requirements
+          enableLobbyChat: false,
+          disableSelfView: false,
+          disableSelfViewSettings: false,
+          startAudioOnly: false,
+          requireDisplayName: false,
+          enableInsecureRoomNameWarning: false,
+          // Disable features that require authentication
+          disableInviteFunctions: true,
+          doNotStoreRoom: true,
+          // Security settings to avoid lobby
+          enableLobby: false,
+          enableForcedReload: false
         },
         interfaceConfigOverwrite: {
           TOOLBAR_BUTTONS: [
-            'microphone', 'camera', 'closedcaptions', 'desktop', 'fullscreen',
-            'fodeviceselection', 'hangup', 'profile', 'chat', 'recording',
-            'livestreaming', 'etherpad', 'sharedvideo', 'settings', 'raisehand',
-            'videoquality', 'filmstrip', 'stats', 'shortcuts',
-            'tileview', 'videobackgroundblur', 'download', 'help', 'mute-everyone'
+            'microphone', 'camera', 'desktop', 'fullscreen',
+            'fodeviceselection', 'hangup', 'chat',
+            'raisehand', 'videoquality', 'filmstrip',
+            'tileview', 'videobackgroundblur', 'settings'
           ],
-          SETTINGS_SECTIONS: ['devices', 'language', 'moderator', 'profile', 'calendar'],
+          SETTINGS_SECTIONS: ['devices', 'language', 'profile'],
           SHOW_JITSI_WATERMARK: false,
           SHOW_WATERMARK_FOR_GUESTS: false,
           SHOW_BRAND_WATERMARK: false,
           DEFAULT_REMOTE_DISPLAY_NAME: 'Participant',
           DISABLE_JOIN_LEAVE_NOTIFICATIONS: false,
           FILM_STRIP_MAX_HEIGHT: 120,
-          MOBILE_APP_PROMO: false
+          MOBILE_APP_PROMO: false,
+          DISABLE_PRESENCE_STATUS: false,
+          HIDE_INVITE_MORE_HEADER: true,
+          DISABLE_RINGING: true,
+          AUDIO_LEVEL_PRIMARY_COLOR: 'rgba(167, 139, 250, 0.8)',
+          AUDIO_LEVEL_SECONDARY_COLOR: 'rgba(167, 139, 250, 0.4)',
+          POLICY_LOGO: null,
+          PROVIDER_NAME: 'SyncWatch',
+          // Remove authentication-related buttons
+          TOOLBAR_ALWAYS_VISIBLE: false,
+          DEFAULT_BACKGROUND: '#1a1a1a',
+          DISABLE_VIDEO_BACKGROUND: false,
+          INITIAL_TOOLBAR_TIMEOUT: 20000,
+          TOOLBAR_TIMEOUT: 4000,
+          VERTICAL_FILMSTRIP: false
         },
         userInfo: {
-          displayName: displayName
+          displayName: displayName,
+          email: authStore.user?.email || ''
         }
       };
 
-      console.log('🔧 Initializing Jitsi with options:', { roomName, displayName });
+      console.log('🔧 Initializing Jitsi with options:', { roomName, displayName, isModerator });
       jitsiApi = new (window as any).JitsiMeetExternalAPI(domain, options);
 
       jitsiApi.addEventListener('videoConferenceJoined', (data: any) => {
         console.log('✅ Joined video call:', data);
         isLoading = false;
+        
+        // If moderator, execute moderator commands
+        if (isModerator) {
+          console.log('👑 Setting up as moderator');
+          // Grant moderator rights
+          try {
+            jitsiApi.executeCommand('toggleLobby', false);
+          } catch (e) {
+            console.log('Could not disable lobby:', e);
+          }
+        }
       });
 
       jitsiApi.addEventListener('videoConferenceLeft', () => {
@@ -209,6 +250,10 @@
 
       jitsiApi.addEventListener('participantJoined', (data: any) => {
         console.log('👤 Participant joined:', data);
+      });
+
+      jitsiApi.addEventListener('participantRoleChanged', (data: any) => {
+        console.log('🔄 Participant role changed:', data);
       });
 
       setTimeout(() => {
@@ -243,6 +288,7 @@
     isInCall = false;
     isMinimized = false;
     isLoading = false;
+    isModerator = false;
   }
 
   function toggleMinimize() {
@@ -259,15 +305,15 @@
   />
 {/if}
 
-<!-- Always render container when in call, visibility controlled by CSS -->
 {#if isInCall}
   {#if isFullscreen}
-    <!-- Fullscreen mode - show in corner -->
     {#if !isMinimized}
       <div class="fixed bottom-4 right-4 z-50 w-100 h-75 transition-all duration-300">
         <div class="bg-black rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl h-full flex flex-col">
           <div class="bg-black/90 px-3 py-2 flex items-center justify-between border-b border-white/10">
-            <span class="text-white text-sm font-medium">Video Call</span>
+            <span class="text-white text-sm font-medium">
+              Video Call {isModerator ? '(Host)' : ''}
+            </span>
             <div class="flex gap-2">
               <button 
                 onclick={toggleMinimize} 
@@ -298,7 +344,6 @@
         </div>
       </div>
     {:else}
-      <!-- Minimized in fullscreen -->
       <div class="fixed bottom-4 right-4 z-50">
         <button
           onclick={toggleMinimize}
@@ -308,16 +353,14 @@
           <Maximize2 class="w-6 h-6" />
         </button>
       </div>
-      <!-- Hidden container for minimized state -->
       <div class="hidden">
         <div bind:this={jitsiContainer}></div>
       </div>
     {/if}
   {:else}
-    <!-- Non-fullscreen mode - show normally -->
     <div class="space-y-3">
       <div class="text-text-secondary text-sm text-center flex items-center justify-between">
-        <span>Video Call Active</span>
+        <span>Video Call Active {isModerator ? '(You are the host)' : ''}</span>
         <button
           onclick={endCall}
           class="text-red-400 hover:text-red-300 text-sm transition"
@@ -341,7 +384,6 @@
     </div>
   {/if}
 {:else}
-  <!-- Not in call - show start button -->
   <button
     onclick={startCall}
     disabled={isLoading || !isJitsiLoaded}
