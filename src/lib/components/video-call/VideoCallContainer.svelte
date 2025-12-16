@@ -168,11 +168,10 @@
           },
           
           // CRITICAL: Disable ALL authentication and moderation features
-          enableUserRolesBasedOnToken: false,
+          enableUserRolesBasedOnToken: true,
           enableLobby: false,
           enableLobbyChat: false,
-          moderatedRoomServiceUrl: undefined,
-          hideAddRoomButton: true,
+          hideAddRoomButton: false,
           
           // Disable self-view options that might trigger auth
           disableSelfView: false,
@@ -183,15 +182,15 @@
           requireDisplayName: false,
           enableInsecureRoomNameWarning: false,
           
-          // Remove authentication dialogs
-          disableInviteFunctions: true,
-          doNotStoreRoom: true,
-          enableForcedReload: false,
+          // ENABLE authentication dialogs
+          disableInviteFunctions: false,
+          doNotStoreRoom: false,
+          enableForcedReload: true,
           
-          // Disable features that require authentication
-          disableProfile: true,
-          hideLobbyButton: true,
-          hideParticipantsStats: true,
+          // Features that require authentication
+          disableProfile: false,
+          hideLobbyButton: false,
+          hideParticipantsStats: false,
           
           // Audio detection
           enableNoAudioDetection: true,
@@ -265,8 +264,8 @@
           TOOLBAR_TIMEOUT: 4000,
           VERTICAL_FILMSTRIP: false,
           
-          // CRITICAL: Disable all login/auth buttons
-          HIDE_DEEP_LINKING_LOGO: true,
+          // Disable all login/auth buttons
+          HIDE_DEEP_LINKING_LOGO: false,
           DISABLE_TRANSCRIPTION_SUBTITLES: true,
           
           // Video layout
