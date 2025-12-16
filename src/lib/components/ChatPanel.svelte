@@ -156,10 +156,10 @@
     style="opacity: {settingsStore.chatOpacityInFullscreen}"
   >
     <div class="bg-black/80 backdrop-blur-md rounded-xl overflow-hidden border border-white/20 shadow-2xl">
-      <div class="p-3 space-y-2 max-h-80 overflow-y-auto">
+      <div class="p-3 space-y-2 max-h-80 overflow-y-auto scroll-smooth">
         {#each messages.slice(-5) as message (message.id)}
           {@const isOwnMessage = message.user_id === authStore.user?.id}
-          <div class="bg-white/10 rounded-lg p-2 animate-in slide-in-from-bottom-2 duration-200">
+          <div class="bg-white/10 rounded-lg p-2 animate-fadeIn">
             <div class="flex items-center gap-2 mb-1">
               <span class="text-white/90 text-xs font-medium">
                 {isOwnMessage ? 'You' : message.profiles?.display_name || 'Unknown'}
@@ -180,28 +180,28 @@
 
 <!-- Regular Chat Panel (Non-Fullscreen) -->
 {#if !isFullscreen}
-  <div class="bg-surface backdrop-blur-sm border border-border rounded-xl overflow-hidden flex flex-col h-full shadow-lg">
+  <div class="bg-surface backdrop-blur-sm border border-border rounded-xl overflow-hidden flex flex-col shadow-lg" style="height: 100%; min-height: 600px;">
     <!-- Video Call Section -->
-    <div class="p-4 border-b border-border bg-surface-hover/50">
+    <div class="p-4 border-b border-border bg-surface-hover/50 shrink-0">
       <VideoCallContainer {isFullscreen} />
     </div>
 
     <!-- Chat Header -->
-    <div class="p-4 border-b border-border bg-surface-hover/30">
+    <div class="p-3 border-b border-border bg-surface-hover/30 shrink-0">
       <h3 class="text-text-primary font-semibold text-lg">Chat</h3>
       <p class="text-text-muted text-xs mt-1">{messages.length} message{messages.length !== 1 ? 's' : ''}</p>
     </div>
 
-    <!-- Chat Messages -->
-    <div class="flex-1 overflow-hidden relative">
+    <!-- Chat Messages - Takes remaining space -->
+    <div class="flex-1 overflow-hidden relative min-h-0">
       <ChatMessages {messages} containerRef={chatContainer} />
       
       <!-- Scroll to bottom indicator -->
-      {#if messages.length > 0}
-        <div class="absolute bottom-2 right-2 opacity-0 hover:opacity-100 transition-opacity">
+      {#if messages.length > 5}
+        <div class="absolute bottom-2 right-2 opacity-0 hover:opacity-100 transition-opacity duration-200">
           <button
             onclick={scrollToBottom}
-            class="bg-primary/80 hover:bg-primary text-white p-2 rounded-full shadow-lg"
+            class="bg-primary/90 hover:bg-primary text-white p-2 rounded-full shadow-lg transition-all hover:scale-110"
             title="Scroll to bottom"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,7 +213,7 @@
     </div>
 
     <!-- Message Input -->
-    <div class="p-4 border-t border-border bg-surface-hover/30">
+    <div class="p-4 border-t border-border bg-surface-hover/30 shrink-0">
       <form 
         onsubmit={(e) => { e.preventDefault(); sendMessage(); }} 
         class="flex gap-2"
@@ -253,7 +253,7 @@
 {/if}
 
 <style>
-  @keyframes slide-in-from-bottom {
+  @keyframes fadeIn {
     from {
       opacity: 0;
       transform: translateY(10px);
@@ -264,7 +264,7 @@
     }
   }
 
-  .animate-in {
-    animation: slide-in-from-bottom 0.2s ease-out;
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
   }
 </style>

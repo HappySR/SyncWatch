@@ -133,7 +133,7 @@
       <div class="space-y-6">
         <UserList {isHost} />
         
-        <div class="h-125">
+        <div style="height: calc(100vh - 200px); min-height: 600px;">
           <ChatPanel isFullscreen={isVideoFullscreen} />
         </div>
       </div>
