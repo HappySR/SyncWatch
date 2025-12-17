@@ -184,7 +184,7 @@
 {#if !isFullscreen}
 	<div
 		class="bg-surface border-border flex flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
-		style="height: 100%; min-height: 600px;"
+		style="min-height: 800px;"
 	>
 		<!-- Video Call Section -->
 		<div class="border-border bg-surface-hover/50 shrink-0 border-b p-4">

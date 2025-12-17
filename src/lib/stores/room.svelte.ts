@@ -36,7 +36,6 @@ class RoomStore {
 
 			if (roomError) throw roomError;
 
-			// Add creator as member with controls
 			const { error: memberError } = await supabase.from('room_members').insert({
 				room_id: room.id,
 				user_id: authStore.user.id,
@@ -60,19 +59,17 @@ class RoomStore {
 		this.loading = true;
 		this.error = null;
 
-		// Set timeout to prevent infinite loading
 		this.joinTimeout = setTimeout(() => {
 			if (this.loading) {
 				this.error = 'Join room timeout. Please try again.';
 				this.loading = false;
 				throw new Error('Join room timeout');
 			}
-		}, 15000); // 15 second timeout
+		}, 15000);
 
 		try {
 			console.log('Attempting to join room:', roomId);
 
-			// First verify the room exists
 			const { data: roomExists, error: roomCheckError } = await supabase
 				.from('rooms')
 				.select('id, name, is_public')
@@ -80,18 +77,13 @@ class RoomStore {
 				.single();
 
 			if (roomCheckError || !roomExists) {
-				console.error('Room not found:', roomCheckError);
 				throw new Error('Room not found');
 			}
 
-			// Check if room is public
 			if (!roomExists.is_public) {
 				throw new Error('This room is private');
 			}
 
-			console.log('Room exists:', roomExists);
-
-			// Check if already a member
 			const { data: existingMember } = await supabase
 				.from('room_members')
 				.select('id')
@@ -107,7 +99,6 @@ class RoomStore {
 				return;
 			}
 
-			// Insert new membership
 			const { data, error } = await supabase
 				.from('room_members')
 				.insert({
@@ -120,16 +111,11 @@ class RoomStore {
 				.single();
 
 			if (error) {
-				console.error('Failed to join room:', error);
-				
-				// Better error messages
 				if (error.message?.includes('row-level security')) {
 					throw new Error('Permission denied. You may not have access to this room.');
 				}
 				throw error;
 			}
-
-			console.log('Successfully joined room:', data);
 
 			await this.loadRoom(roomId);
 			this.subscribeToRoom(roomId);
@@ -137,7 +123,6 @@ class RoomStore {
 
 			console.log('Successfully joined room');
 		} catch (err: any) {
-			console.error('Join room error:', err);
 			this.error = err.message;
 			throw err;
 		} finally {
@@ -159,7 +144,6 @@ class RoomStore {
 
 			await this.loadMembers(roomId);
 		} catch (err: any) {
-			console.error('Failed to load room:', err);
 			throw new Error('Failed to load room data');
 		}
 	}
@@ -172,18 +156,26 @@ class RoomStore {
 					*,
 					profiles (*)
 				`)
-				.eq('room_id', roomId);
+				.eq('room_id', roomId)
+				.order('joined_at', { ascending: true });
 
 			if (error) throw error;
 
-			// Store all members initially
 			const allMembers = data || [];
-			this.members = allMembers;
+			
+			// Preserve online status when reloading
+			const previousOnlineStatus = new Map(
+				this.members.map(m => [m.user_id, m.is_online])
+			);
 
-			console.log('Loaded all room members:', allMembers.length);
+			this.members = allMembers.map(member => ({
+				...member,
+				is_online: previousOnlineStatus.get(member.user_id) ?? false
+			}));
+
+			console.log('✅ Loaded room members:', allMembers.length);
 		} catch (err: any) {
 			console.error('Failed to load members:', err);
-			// Don't throw - members can be loaded later
 		}
 	}
 
@@ -196,9 +188,8 @@ class RoomStore {
 			clearInterval(this.heartbeatInterval);
 		}
 
-		console.log('Starting presence tracking for room:', roomId);
+		console.log('👥 Starting presence tracking for room:', roomId);
 
-		// Create presence channel
 		this.presenceChannel = supabase.channel(`presence:${roomId}`, {
 			config: {
 				presence: {
@@ -207,23 +198,20 @@ class RoomStore {
 			}
 		});
 
-		// Track presence state
 		this.presenceChannel
 			.on('presence', { event: 'sync' }, () => {
 				const state = this.presenceChannel.presenceState();
-				console.log('Presence sync:', state);
 				this.updateMembersFromPresence(state);
 			})
 			.on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
-				console.log('User joined:', key, newPresences);
+				console.log('✅ User joined presence:', key);
 			})
 			.on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
-				console.log('User left:', key, leftPresences);
+				console.log('👋 User left presence:', key);
 			})
 			.subscribe(async (status: any) => {
 				console.log('Presence channel status:', status);
 				if (status === 'SUBSCRIBED') {
-					// Track this user's presence
 					await this.presenceChannel.track({
 						user_id: authStore.user?.id,
 						online_at: new Date().toISOString()
@@ -231,7 +219,6 @@ class RoomStore {
 				}
 			});
 
-		// Send heartbeat every 30 seconds
 		this.heartbeatInterval = setInterval(async () => {
 			if (this.presenceChannel) {
 				await this.presenceChannel.track({
@@ -254,13 +241,12 @@ class RoomStore {
 			});
 		});
 
-		// Only update online status, don't reload from database
 		this.members = this.members.map((member) => ({
 			...member,
 			is_online: onlineUserIds.has(member.user_id)
 		}));
 
-		console.log('📊 Members online status updated:', {
+		console.log('📊 Online status updated:', {
 			total: this.members.length,
 			online: this.members.filter((m) => m.is_online).length
 		});
@@ -273,7 +259,6 @@ class RoomStore {
 
 		console.log('🔌 Subscribing to room updates:', roomId);
 
-		// Use postgres_changes for instant updates
 		this.roomChannel = supabase
 			.channel(`room:${roomId}`, {
 				config: {
@@ -297,15 +282,48 @@ class RoomStore {
 			.on(
 				'postgres_changes',
 				{
-					event: '*',
+					event: 'INSERT',
 					schema: 'public',
 					table: 'room_members',
 					filter: `room_id=eq.${roomId}`
 				},
-				(payload) => {
-					console.log('👥 Members changed:', payload.eventType);
-					// Immediately reload members when someone joins/leaves
-					this.loadMembers(roomId);
+				async (payload) => {
+					console.log('✅ New member joined:', payload.new);
+					// Reload members immediately when someone joins
+					await this.loadMembers(roomId);
+				}
+			)
+			.on(
+				'postgres_changes',
+				{
+					event: 'DELETE',
+					schema: 'public',
+					table: 'room_members',
+					filter: `room_id=eq.${roomId}`
+				},
+				async (payload) => {
+					console.log('👋 Member left:', payload.old);
+					// Reload members immediately when someone leaves
+					await this.loadMembers(roomId);
+				}
+			)
+			.on(
+				'postgres_changes',
+				{
+					event: 'UPDATE',
+					schema: 'public',
+					table: 'room_members',
+					filter: `room_id=eq.${roomId}`
+				},
+				async (payload) => {
+					console.log('🔄 Member updated:', payload.new);
+					// Update specific member without full reload
+					const updatedMember = payload.new as RoomMember;
+					const index = this.members.findIndex(m => m.id === updatedMember.id);
+					if (index !== -1) {
+						this.members[index] = { ...this.members[index], ...updatedMember };
+						this.members = [...this.members]; // Trigger reactivity
+					}
 				}
 			)
 			.subscribe((status) => {

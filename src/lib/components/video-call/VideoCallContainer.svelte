@@ -151,11 +151,10 @@
 
 	async function getAgoraToken(channelName: string, uid: string): Promise<string> {
 		try {
-			console.log('🔑 Fetching Agora token from server...');
 			const response = await fetch('/api/agora-token', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include', // Important: Send cookies
+				credentials: 'include',
 				body: JSON.stringify({ channelName, uid })
 			});
 
@@ -165,7 +164,6 @@
 			}
 
 			const data = await response.json();
-			console.log('✅ Token received');
 			return data.token;
 		} catch (error) {
 			console.error('❌ Token fetch error:', error);
@@ -181,28 +179,17 @@
 		incomingCall = null;
 
 		try {
-			// Initialize Agora client
 			agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
-			// Set up event listeners
 			agoraClient.on('user-published', handleUserPublished);
 			agoraClient.on('user-unpublished', handleUserUnpublished);
 			agoraClient.on('user-left', handleUserLeft);
 
-			// Generate a numeric UID
 			const numericUid = Math.floor(Math.random() * 1000000);
-
-			// Get token from server
 			const token = await getAgoraToken(channelName, String(numericUid));
 
-			console.log('🎯 Joining channel:', channelName, 'with UID:', numericUid);
-
-			// Join channel with token
 			const uid = await agoraClient.join(PUBLIC_AGORA_APP_ID, channelName, token, numericUid);
 
-			console.log('✅ Joined channel with UID:', uid);
-
-			// Create and publish local tracks
 			[localAudioTrack, localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
 				{
 					microphoneId: selectedMicrophone || undefined,
@@ -214,15 +201,12 @@
 				}
 			);
 
-			// Play local video
 			if (localVideoContainer && localVideoTrack) {
 				localVideoTrack.play(localVideoContainer);
 			}
 
-			// Publish tracks
 			await agoraClient.publish([localAudioTrack, localVideoTrack]);
 
-			// Broadcast display name
 			if (callChannel) {
 				await callChannel.send({
 					type: 'broadcast',
@@ -235,11 +219,9 @@
 			}
 
 			isLoading = false;
-			console.log('✅ Successfully joined call');
 		} catch (error: any) {
 			console.error('❌ Error joining call:', error);
-			const errorMessage = error.message || 'Failed to join call';
-			alert(`Failed to join call: ${errorMessage}. Please check your permissions and try again.`);
+			alert(`Failed to join call: ${error.message}. Please try again.`);
 			await cleanup();
 			isInCall = false;
 			isLoading = false;
@@ -247,16 +229,12 @@
 	}
 
 	async function handleUserPublished(user: any, mediaType: 'audio' | 'video') {
-		console.log('👤 User published:', user.uid, mediaType);
-
 		await agoraClient?.subscribe(user, mediaType);
 
 		const remoteUser = remoteUsers.get(String(user.uid)) || { uid: String(user.uid) };
 
 		if (mediaType === 'video') {
 			remoteUser.videoTrack = user.videoTrack;
-
-			// Auto-play video in container
 			setTimeout(() => {
 				const container = document.getElementById(`remote-video-${user.uid}`);
 				if (container && user.videoTrack) {
@@ -275,8 +253,6 @@
 	}
 
 	function handleUserUnpublished(user: any, mediaType: 'audio' | 'video') {
-		console.log('👤 User unpublished:', user.uid, mediaType);
-
 		const remoteUser = remoteUsers.get(String(user.uid));
 		if (!remoteUser) return;
 
@@ -292,33 +268,20 @@
 	}
 
 	function handleUserLeft(user: any) {
-		console.log('👋 User left:', user.uid);
 		remoteUsers.delete(String(user.uid));
 		remoteUsers = new Map(remoteUsers);
 	}
 
 	async function toggleMute() {
 		if (!localAudioTrack) return;
-
-		if (isMuted) {
-			await localAudioTrack.setEnabled(true);
-			isMuted = false;
-		} else {
-			await localAudioTrack.setEnabled(false);
-			isMuted = true;
-		}
+		await localAudioTrack.setEnabled(!isMuted);
+		isMuted = !isMuted;
 	}
 
 	async function toggleVideo() {
 		if (!localVideoTrack) return;
-
-		if (isVideoOff) {
-			await localVideoTrack.setEnabled(true);
-			isVideoOff = false;
-		} else {
-			await localVideoTrack.setEnabled(false);
-			isVideoOff = true;
-		}
+		await localVideoTrack.setEnabled(!isVideoOff);
+		isVideoOff = !isVideoOff;
 	}
 
 	async function toggleScreenShare() {
@@ -326,31 +289,24 @@
 
 		try {
 			if (!isSharingScreen) {
-				// Start screen sharing
 				const screenTrack = await AgoraRTC.createScreenVideoTrack(
-					{
-						encoderConfig: '1080p_1'
-					},
+					{ encoderConfig: '1080p_1' },
 					'auto'
 				);
 
-				// If screenTrack is an array (includes audio), handle it
 				const videoTrack = Array.isArray(screenTrack) ? screenTrack[0] : screenTrack;
 
-				// Unpublish camera
 				if (localVideoTrack) {
 					await agoraClient.unpublish(localVideoTrack);
 					localVideoTrack.close();
 				}
 
-				// Publish screen
 				await agoraClient.publish(videoTrack);
 
 				if (localVideoContainer) {
 					videoTrack.play(localVideoContainer);
 				}
 
-				// Handle screen share stop
 				videoTrack.on('track-ended', async () => {
 					await stopScreenShare();
 				});
@@ -369,11 +325,9 @@
 	async function stopScreenShare() {
 		if (!agoraClient || !localVideoTrack) return;
 
-		// Stop screen track
 		await agoraClient.unpublish(localVideoTrack);
 		localVideoTrack.close();
 
-		// Restart camera
 		localVideoTrack = await AgoraRTC.createCameraVideoTrack({
 			cameraId: selectedCamera || undefined,
 			encoderConfig: '720p_2'
@@ -398,7 +352,6 @@
 	}
 
 	function declineCall() {
-		console.log('❌ Call declined');
 		incomingCall = null;
 	}
 
@@ -410,13 +363,11 @@
 	}
 
 	async function cleanup() {
-		// Close local tracks
 		localAudioTrack?.close();
 		localVideoTrack?.close();
 		localAudioTrack = null;
 		localVideoTrack = null;
 
-		// Leave channel
 		if (agoraClient) {
 			await agoraClient.leave();
 			agoraClient = null;
@@ -445,12 +396,17 @@
 {/if}
 
 {#if isInCall}
+	<!-- FULLSCREEN MODE: Fixed overlay that persists -->
 	{#if isFullscreen}
-		{#if !isMinimized}
-			<div
-				class="fixed right-4 bottom-4 z-50 w-100 transition-all duration-300"
-				style="height: 500px;"
-			>
+		<!-- Always render video call in fullscreen, z-index above video player -->
+		<div
+			class="fixed z-9999 transition-all duration-300"
+			class:minimized={isMinimized}
+			style={isMinimized
+				? 'right: 20px; bottom: 20px; width: auto; height: auto;'
+				: 'right: 20px; bottom: 20px; width: 400px; height: 500px;'}
+		>
+			{#if !isMinimized}
 				<div
 					class="flex h-full flex-col overflow-hidden rounded-xl border-2 border-white/20 bg-black shadow-2xl"
 				>
@@ -523,7 +479,6 @@
 							class="rounded-full p-3 transition {isMuted
 								? 'bg-red-500 hover:bg-red-600'
 								: 'bg-white/10 hover:bg-white/20'} text-white"
-							title={isMuted ? 'Unmute' : 'Mute'}
 						>
 							{#if isMuted}
 								<MicOff class="h-5 w-5" />
@@ -537,7 +492,6 @@
 							class="rounded-full p-3 transition {isVideoOff
 								? 'bg-red-500 hover:bg-red-600'
 								: 'bg-white/10 hover:bg-white/20'} text-white"
-							title={isVideoOff ? 'Turn on video' : 'Turn off video'}
 						>
 							{#if isVideoOff}
 								<VideoOff class="h-5 w-5" />
@@ -551,7 +505,6 @@
 							class="rounded-full p-3 transition {isSharingScreen
 								? 'bg-primary hover:bg-primary/90'
 								: 'bg-white/10 hover:bg-white/20'} text-white"
-							title={isSharingScreen ? 'Stop sharing' : 'Share screen'}
 						>
 							{#if isSharingScreen}
 								<MonitorOff class="h-5 w-5" />
@@ -605,9 +558,8 @@
 						</div>
 					{/if}
 				</div>
-			</div>
-		{:else}
-			<div class="fixed right-4 bottom-4 z-50">
+			{:else}
+				<!-- Minimized Button -->
 				<button
 					onclick={toggleMinimize}
 					class="rounded-full border-2 border-white/20 bg-green-500 p-4 text-white shadow-2xl transition-all hover:scale-110 hover:bg-green-600"
@@ -615,13 +567,17 @@
 				>
 					<Maximize2 class="h-6 w-6" />
 				</button>
-			</div>
-			<div class="hidden">
-				<div bind:this={localVideoContainer}></div>
-			</div>
-		{/if}
+			{/if}
+
+			<!-- Hidden local video container when minimized -->
+			{#if isMinimized}
+				<div class="hidden">
+					<div bind:this={localVideoContainer}></div>
+				</div>
+			{/if}
+		</div>
 	{:else}
-		<!-- Non-fullscreen view -->
+		<!-- NON-FULLSCREEN MODE: Normal chat panel view -->
 		<div class="space-y-3">
 			<div class="text-text-secondary flex items-center justify-between text-center text-sm">
 				<span class="flex items-center gap-2">
@@ -637,10 +593,8 @@
 			</div>
 
 			<div class="border-border overflow-hidden rounded-xl border bg-black" style="height: 400px;">
-				<!-- Video Grid -->
 				<div class="h-full overflow-y-auto p-2">
 					<div class="grid grid-cols-2 gap-2">
-						<!-- Local Video -->
 						<div class="relative h-48 overflow-hidden rounded-lg bg-gray-900">
 							<div bind:this={localVideoContainer} class="h-full w-full"></div>
 							<div
@@ -650,7 +604,6 @@
 							</div>
 						</div>
 
-						<!-- Remote Videos -->
 						{#each Array.from(remoteUsers.values()) as user (user.uid)}
 							<div class="relative h-48 overflow-hidden rounded-lg bg-gray-900">
 								<div id="remote-video-{user.uid}" class="h-full w-full"></div>
@@ -672,7 +625,6 @@
 					class="rounded-lg p-2 transition {isMuted
 						? 'bg-red-500 hover:bg-red-600'
 						: 'bg-surface-hover hover:bg-surface'} text-white"
-					title={isMuted ? 'Unmute' : 'Mute'}
 				>
 					{#if isMuted}
 						<MicOff class="h-4 w-4" />
@@ -686,7 +638,6 @@
 					class="rounded-lg p-2 transition {isVideoOff
 						? 'bg-red-500 hover:bg-red-600'
 						: 'bg-surface-hover hover:bg-surface'} text-white"
-					title={isVideoOff ? 'Turn on video' : 'Turn off video'}
 				>
 					{#if isVideoOff}
 						<VideoOff class="h-4 w-4" />
@@ -700,7 +651,6 @@
 					class="rounded-lg p-2 transition {isSharingScreen
 						? 'bg-primary hover:bg-primary/90'
 						: 'bg-surface-hover hover:bg-surface'} text-white"
-					title={isSharingScreen ? 'Stop sharing' : 'Share screen'}
 				>
 					{#if isSharingScreen}
 						<MonitorOff class="h-4 w-4" />
@@ -712,13 +662,11 @@
 				<button
 					onclick={toggleSettings}
 					class="bg-surface-hover hover:bg-surface rounded-lg p-2 text-white transition"
-					title="Settings"
 				>
 					<Settings class="h-4 w-4" />
 				</button>
 			</div>
 
-			<!-- Settings Panel -->
 			{#if showSettings}
 				<div class="bg-surface-hover space-y-3 rounded-lg p-4">
 					<div>
@@ -771,3 +719,10 @@
 		{/if}
 	</button>
 {/if}
+
+<style>
+	.minimized {
+		width: auto !important;
+		height: auto !important;
+	}
+</style>

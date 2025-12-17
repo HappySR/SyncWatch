@@ -12,6 +12,7 @@
 	let isFullscreen = $state(false);
 	let containerElement: HTMLDivElement | undefined = $state(undefined);
 	let isVideoLoading = $state(false);
+	let showFullscreenButton = $state(false);
 
 	const videoUrl = $derived(playerStore.videoUrl);
 	const videoType = $derived(playerStore.videoType);
@@ -22,11 +23,13 @@
 	let lastYtTime = 0;
 	let ytSyncInterval: any = null;
 	let isYouTubeReady = $state(false);
+	let ytSyncCheckInterval: any = null;
 
 	// Direct video tracking
 	let lastDirectTime = 0;
 	let directSyncInterval: any = null;
 	let isDirectVideoReady = $state(false);
+	let directSyncCheckInterval: any = null;
 
 	onMount(() => {
 		loadYouTubeAPI();
@@ -45,7 +48,9 @@
 			youtubePlayer.destroy();
 		}
 		if (ytSyncInterval) clearInterval(ytSyncInterval);
+		if (ytSyncCheckInterval) clearInterval(ytSyncCheckInterval);
 		if (directSyncInterval) clearInterval(directSyncInterval);
+		if (directSyncCheckInterval) clearInterval(directSyncCheckInterval);
 	}
 
 	function handleFullscreenChange() {
@@ -125,10 +130,8 @@
 			isYouTubeReady = false;
 		}
 
-		if (ytSyncInterval) {
-			clearInterval(ytSyncInterval);
-			ytSyncInterval = null;
-		}
+		if (ytSyncInterval) clearInterval(ytSyncInterval);
+		if (ytSyncCheckInterval) clearInterval(ytSyncCheckInterval);
 
 		youtubePlayer = new (window as any).YT.Player('youtube-player', {
 			videoId,
@@ -136,7 +139,7 @@
 				controls: 1,
 				modestbranding: 1,
 				rel: 0,
-				fs: 0,
+				fs: 1, // Enable native fullscreen
 				playsinline: 1,
 				autoplay: 0,
 				enablejsapi: 1,
@@ -149,18 +152,14 @@
 					isYouTubeReady = true;
 					lastYtTime = currentTime;
 
-					try {
-						event.target.setPlaybackQuality('default');
-					} catch (e) {}
-
 					setTimeout(() => {
 						syncYouTubePlayer();
 						startYouTubeMonitoring();
+						startYouTubeSyncCheck();
 					}, 500);
 				},
 				onStateChange: (event: any) => {
 					const YT = (window as any).YT;
-
 					if (playerStore.isSyncing) return;
 
 					if (event.data === YT.PlayerState.PLAYING && !isPlaying) {
@@ -174,9 +173,6 @@
 						lastYtTime = currentYtTime;
 						playerStore.pause();
 					}
-				},
-				onError: (event: any) => {
-					console.error('YouTube player error:', event.data);
 				}
 			}
 		});
@@ -209,6 +205,27 @@
 				}
 			} catch (e) {}
 		}, 500);
+	}
+
+	// Check for desync every 3 seconds and force sync if > 2 seconds off
+	function startYouTubeSyncCheck() {
+		if (ytSyncCheckInterval) clearInterval(ytSyncCheckInterval);
+
+		ytSyncCheckInterval = setInterval(() => {
+			if (!youtubePlayer || !isYouTubeReady || playerStore.isSyncing) return;
+
+			try {
+				const ytTime = youtubePlayer.getCurrentTime();
+				const expectedTime = currentTime;
+				const diff = Math.abs(ytTime - expectedTime);
+
+				if (diff > 2) {
+					console.log('🔄 FORCE SYNC - Desync detected:', diff, 'seconds');
+					youtubePlayer.seekTo(expectedTime, true);
+					lastYtTime = expectedTime;
+				}
+			} catch (e) {}
+		}, 3000);
 	}
 
 	function syncYouTubePlayer() {
@@ -249,10 +266,7 @@
 		isVideoLoading = true;
 		isDirectVideoReady = false;
 
-		// Set the source
 		videoElement.src = videoUrl;
-
-		// Wait for it to load
 		videoElement.load();
 	}
 
@@ -266,12 +280,10 @@
 				const videoTime = videoElement.currentTime;
 				const duration = videoElement.duration;
 
-				// Update duration
 				if (duration && !isNaN(duration) && duration !== playerStore.duration) {
 					playerStore.duration = duration;
 				}
 
-				// Detect manual seeks (jumps > 2 seconds)
 				const timeDiff = Math.abs(videoTime - lastDirectTime);
 				if (timeDiff > 2 && !playerStore.isSyncing && !videoElement.seeking) {
 					console.log('⏩ Direct video seek detected:', lastDirectTime, '→', videoTime);
@@ -280,12 +292,32 @@
 
 				lastDirectTime = videoTime;
 
-				// Smooth time updates during playback
 				if (!playerStore.isSyncing && isPlaying && !videoElement.paused) {
 					playerStore.currentTime = videoTime;
 				}
 			} catch (e) {}
 		}, 500);
+	}
+
+	// Check for desync every 3 seconds
+	function startDirectSyncCheck() {
+		if (directSyncCheckInterval) clearInterval(directSyncCheckInterval);
+
+		directSyncCheckInterval = setInterval(() => {
+			if (!videoElement || !isDirectVideoReady || playerStore.isSyncing) return;
+
+			try {
+				const videoTime = videoElement.currentTime;
+				const expectedTime = currentTime;
+				const diff = Math.abs(videoTime - expectedTime);
+
+				if (diff > 2 && !videoElement.seeking) {
+					console.log('🔄 FORCE SYNC - Desync detected:', diff, 'seconds');
+					videoElement.currentTime = expectedTime;
+					lastDirectTime = expectedTime;
+				}
+			} catch (e) {}
+		}, 3000);
 	}
 
 	function syncDirectVideo() {
@@ -297,7 +329,6 @@
 
 			console.log('🔄 Syncing direct video:', { isPlaying, currentTime, videoTime, isPaused });
 
-			// Seek if time difference is significant
 			const timeDiff = Math.abs(videoTime - currentTime);
 			if (timeDiff > 1 && !videoElement.seeking) {
 				console.log('⏩ Seeking direct video to:', currentTime);
@@ -305,12 +336,9 @@
 				lastDirectTime = currentTime;
 			}
 
-			// Sync play/pause state
 			if (isPlaying && isPaused) {
 				console.log('▶️ Starting direct video playback');
-				videoElement.play().catch((e) => {
-					console.log('Autoplay prevented:', e);
-				});
+				videoElement.play().catch((e) => console.log('Autoplay prevented:', e));
 			} else if (!isPlaying && !isPaused) {
 				console.log('⏸️ Pausing direct video playback');
 				videoElement.pause();
@@ -322,7 +350,6 @@
 
 	// ==================== EFFECTS ====================
 
-	// YouTube video URL changed
 	$effect(() => {
 		if (videoUrl && videoType === 'youtube') {
 			console.log('🔄 Video URL changed, initializing YouTube player');
@@ -331,7 +358,6 @@
 		}
 	});
 
-	// Direct video URL changed
 	$effect(() => {
 		if (videoUrl && videoType === 'direct') {
 			console.log('🔄 Video URL changed, initializing direct video');
@@ -340,7 +366,6 @@
 		}
 	});
 
-	// Sync when isSyncing changes
 	$effect(() => {
 		if (playerStore.isSyncing) {
 			if (videoType === 'youtube' && isYouTubeReady) {
@@ -362,10 +387,10 @@
 
 		playerStore.duration = videoElement.duration;
 
-		// Initial sync
 		setTimeout(() => {
 			syncDirectVideo();
 			startDirectVideoMonitoring();
+			startDirectSyncCheck();
 		}, 100);
 	}
 
@@ -397,7 +422,6 @@
 		const videoTime = videoElement.currentTime;
 		const timeDiff = Math.abs(videoTime - lastDirectTime);
 
-		// Only report significant seeks
 		if (timeDiff > 2) {
 			playerStore.seek(videoTime);
 			lastDirectTime = videoTime;
@@ -415,83 +439,73 @@
 	function handleDirectVideoError(e: Event) {
 		console.error('❌ Direct video error:', e);
 		isVideoLoading = false;
-		alert(
-			'Failed to load video. Please check:\n\n• The URL is correct\n• The file is publicly accessible\n• Your internet connection is stable\n\nTry using YouTube or Dropbox for better reliability.'
-		);
+		alert('Failed to load video. Please check the URL and try again.');
 	}
 </script>
 
-<div
-	bind:this={containerElement}
-	role="region"
-	aria-label="Video player"
-	class="group relative aspect-video overflow-hidden rounded-xl bg-black"
-	class:fullscreen-container={isFullscreen}
->
-	{#if !videoUrl}
-		<div class="absolute inset-0 flex items-center justify-center text-white/60">
-			<div class="space-y-2 text-center">
-				<Video class="mx-auto h-16 w-16 opacity-30" />
-				<p class="text-lg">No video loaded</p>
-				<p class="text-sm">Add a video URL below to start watching together</p>
-			</div>
-		</div>
-	{:else if videoType === 'youtube'}
-		<div id="youtube-player" class="h-full w-full"></div>
-
-		<button
-			onclick={toggleFullscreen}
-			class="pointer-events-auto absolute top-4 right-4 z-50 rounded-lg bg-black/60 p-3 text-white opacity-100 backdrop-blur-sm transition hover:bg-black/80"
-			title="Toggle Fullscreen"
-			aria-label="Toggle Fullscreen"
-		>
-			{#if isFullscreen}
-				<Minimize class="h-5 w-5" />
-			{:else}
-				<Maximize class="h-5 w-5" />
-			{/if}
-		</button>
-	{:else}
-		<!-- Direct Video Player -->
-		<video
-			bind:this={videoElement}
-			class="h-full w-full"
-			controls
-			preload="metadata"
-			onloadedmetadata={handleDirectVideoLoadedMetadata}
-			onplay={handleDirectVideoPlay}
-			onpause={handleDirectVideoPause}
-			onseeked={handleDirectVideoSeeked}
-			onwaiting={handleDirectVideoWaiting}
-			oncanplay={handleDirectVideoCanPlay}
-			onerror={handleDirectVideoError}
-		>
-			<track kind="captions" />
-		</video>
-
-		<!-- Loading indicator -->
-		{#if isVideoLoading}
-			<div class="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-				<div class="text-center text-white">
-					<Loader class="mx-auto mb-2 h-12 w-12 animate-spin" />
-					<p>Loading video...</p>
+<div class="relative">
+	<div
+		bind:this={containerElement}
+		role="region"
+		aria-label="Video player"
+		class="group relative aspect-video overflow-hidden rounded-xl bg-black"
+		class:fullscreen-container={isFullscreen}
+		onmouseenter={() => (showFullscreenButton = true)}
+		onmouseleave={() => (showFullscreenButton = false)}
+	>
+		{#if !videoUrl}
+			<div class="absolute inset-0 flex items-center justify-center text-white/60">
+				<div class="space-y-2 text-center">
+					<Video class="mx-auto h-16 w-16 opacity-30" />
+					<p class="text-lg">No video loaded</p>
+					<p class="text-sm">Add a video URL below to start watching together</p>
 				</div>
 			</div>
-		{/if}
+		{:else if videoType === 'youtube'}
+			<div id="youtube-player" class="h-full w-full"></div>
+		{:else}
+			<video
+				bind:this={videoElement}
+				class="h-full w-full"
+				controls
+				preload="metadata"
+				onloadedmetadata={handleDirectVideoLoadedMetadata}
+				onplay={handleDirectVideoPlay}
+				onpause={handleDirectVideoPause}
+				onseeked={handleDirectVideoSeeked}
+				onwaiting={handleDirectVideoWaiting}
+				oncanplay={handleDirectVideoCanPlay}
+				onerror={handleDirectVideoError}
+			>
+				<track kind="captions" />
+			</video>
 
-		<button
-			onclick={toggleFullscreen}
-			class="pointer-events-auto absolute top-4 right-4 z-50 rounded-lg bg-black/60 p-3 text-white opacity-100 backdrop-blur-sm transition hover:bg-black/80"
-			title="Toggle Fullscreen"
-			aria-label="Toggle Fullscreen"
-		>
-			{#if isFullscreen}
-				<Minimize class="h-5 w-5" />
-			{:else}
-				<Maximize class="h-5 w-5" />
+			{#if isVideoLoading}
+				<div class="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+					<div class="text-center text-white">
+						<Loader class="mx-auto mb-2 h-12 w-12 animate-spin" />
+						<p>Loading video...</p>
+					</div>
+				</div>
 			{/if}
-		</button>
-	{/if}
+		{/if}
+	</div>
+
+	<!-- External Fullscreen Button -->
+	<button
+		onclick={toggleFullscreen}
+		class="absolute -bottom-12 right-0 z-40 rounded-lg bg-black/80 p-3 text-white backdrop-blur-sm transition-all hover:bg-black
+			{isFullscreen ? 'opacity-0 hover:opacity-100' : 'opacity-100'}"
+		class:fullscreen-button-hidden={isFullscreen && !showFullscreenButton}
+		title="Toggle Fullscreen"
+		aria-label="Toggle Fullscreen"
+	>
+		{#if isFullscreen}
+			<Minimize class="h-5 w-5" />
+		{:else}
+			<Maximize class="h-5 w-5" />
+		{/if}
+	</button>
 </div>
 
 <style>
@@ -503,7 +517,12 @@
 		bottom: 0;
 		width: 100vw;
 		height: 100vh;
-		z-index: 9999;
+		z-index: 9998;
 		border-radius: 0;
+	}
+
+	.fullscreen-button-hidden {
+		opacity: 0;
+		pointer-events: none;
 	}
 </style>
