@@ -11,6 +11,7 @@ class RoomStore {
 	private roomChannel: any = null;
 	private presenceChannel: any = null;
 	private heartbeatInterval: any = null;
+	private joinTimeout: any = null;
 
 	async createRoom(name: string) {
 		if (!authStore.user) throw new Error('Not authenticated');
@@ -59,13 +60,22 @@ class RoomStore {
 		this.loading = true;
 		this.error = null;
 
+		// Set timeout to prevent infinite loading
+		this.joinTimeout = setTimeout(() => {
+			if (this.loading) {
+				this.error = 'Join room timeout. Please try again.';
+				this.loading = false;
+				throw new Error('Join room timeout');
+			}
+		}, 15000); // 15 second timeout
+
 		try {
 			console.log('Attempting to join room:', roomId);
 
 			// First verify the room exists
 			const { data: roomExists, error: roomCheckError } = await supabase
 				.from('rooms')
-				.select('id, name')
+				.select('id, name, is_public')
 				.eq('id', roomId)
 				.single();
 
@@ -74,28 +84,48 @@ class RoomStore {
 				throw new Error('Room not found');
 			}
 
+			// Check if room is public
+			if (!roomExists.is_public) {
+				throw new Error('This room is private');
+			}
+
 			console.log('Room exists:', roomExists);
 
-			// Use UPSERT to handle duplicate memberships gracefully
+			// Check if already a member
+			const { data: existingMember } = await supabase
+				.from('room_members')
+				.select('id')
+				.eq('room_id', roomId)
+				.eq('user_id', authStore.user.id)
+				.maybeSingle();
+
+			if (existingMember) {
+				console.log('Already a member, loading room...');
+				await this.loadRoom(roomId);
+				this.subscribeToRoom(roomId);
+				this.startPresenceTracking(roomId);
+				return;
+			}
+
+			// Insert new membership
 			const { data, error } = await supabase
 				.from('room_members')
-				.upsert(
-					{
-						room_id: roomId,
-						user_id: authStore.user.id,
-						has_controls: true,
-						joined_at: new Date().toISOString()
-					},
-					{
-						onConflict: 'room_id,user_id',
-						ignoreDuplicates: false // Update joined_at if already exists
-					}
-				)
+				.insert({
+					room_id: roomId,
+					user_id: authStore.user.id,
+					has_controls: true,
+					joined_at: new Date().toISOString()
+				})
 				.select()
 				.single();
 
 			if (error) {
 				console.error('Failed to join room:', error);
+				
+				// Better error messages
+				if (error.message?.includes('row-level security')) {
+					throw new Error('Permission denied. You may not have access to this room.');
+				}
 				throw error;
 			}
 
@@ -111,41 +141,50 @@ class RoomStore {
 			this.error = err.message;
 			throw err;
 		} finally {
+			clearTimeout(this.joinTimeout);
 			this.loading = false;
 		}
 	}
 
 	async loadRoom(roomId: string) {
-		const { data: room, error } = await supabase
-			.from('rooms')
-			.select('*')
-			.eq('id', roomId)
-			.single();
+		try {
+			const { data: room, error } = await supabase
+				.from('rooms')
+				.select('*')
+				.eq('id', roomId)
+				.single();
 
-		if (error) throw error;
-		this.currentRoom = room;
+			if (error) throw error;
+			this.currentRoom = room;
 
-		await this.loadMembers(roomId);
+			await this.loadMembers(roomId);
+		} catch (err: any) {
+			console.error('Failed to load room:', err);
+			throw new Error('Failed to load room data');
+		}
 	}
 
 	async loadMembers(roomId: string) {
-		const { data, error } = await supabase
-			.from('room_members')
-			.select(
-				`
-        *,
-        profiles (*)
-      `
-			)
-			.eq('room_id', roomId);
+		try {
+			const { data, error } = await supabase
+				.from('room_members')
+				.select(`
+					*,
+					profiles (*)
+				`)
+				.eq('room_id', roomId);
 
-		if (error) throw error;
+			if (error) throw error;
 
-		// Store all members initially
-		const allMembers = data || [];
-		this.members = allMembers;
+			// Store all members initially
+			const allMembers = data || [];
+			this.members = allMembers;
 
-		console.log('Loaded all room members:', allMembers.length);
+			console.log('Loaded all room members:', allMembers.length);
+		} catch (err: any) {
+			console.error('Failed to load members:', err);
+			// Don't throw - members can be loaded later
+		}
 	}
 
 	startPresenceTracking(roomId: string) {
@@ -302,12 +341,18 @@ class RoomStore {
 			clearInterval(this.heartbeatInterval);
 			this.heartbeatInterval = null;
 		}
+
+		if (this.joinTimeout) {
+			clearTimeout(this.joinTimeout);
+			this.joinTimeout = null;
+		}
 	}
 
 	leaveRoom() {
 		this.unsubscribe();
 		this.currentRoom = null;
 		this.members = [];
+		this.error = null;
 	}
 }
 

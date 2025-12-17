@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { roomStore } from '$lib/stores/room.svelte';
 	import { goto } from '$app/navigation';
-	import { Video, Users, Lock, Globe } from 'lucide-svelte';
+	import { Video, Users, Lock, Globe, Loader } from 'lucide-svelte';
 
 	let roomName = $state('');
 	let isPublic = $state(true);
@@ -14,33 +14,37 @@
 			return;
 		}
 
+		if (loading) return;
+
 		loading = true;
 		error = null;
 
 		try {
 			const roomId = await roomStore.createRoom(roomName.trim());
 			console.log('Room created with ID:', roomId);
+			
 			// Small delay to ensure database writes complete
 			await new Promise((resolve) => setTimeout(resolve, 500));
+			
 			goto(`/room/${roomId}`);
 		} catch (err: any) {
 			console.error('Create room error:', err);
-			error = err.message || 'Failed to create room';
+			error = err.message || 'Failed to create room. Please try again.';
 			loading = false;
 		}
 	}
 </script>
 
-<div class="mx-auto max-w-2xl px-4 py-12">
-	<div class="rounded-2xl border border-white/10 bg-white/5 p-8 backdrop-blur-sm">
+<div class="mx-auto max-w-2xl px-4 py-8 sm:py-12">
+	<div class="rounded-2xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur-sm">
 		<div class="mb-8 text-center">
 			<div
-				class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-purple-500 to-pink-500"
+				class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-purple-500 to-pink-500 shadow-2xl shadow-purple-500/50"
 			>
 				<Video class="h-8 w-8 text-white" />
 			</div>
-			<h1 class="mb-2 text-3xl font-bold text-white">Create a Room</h1>
-			<p class="text-white/60">Set up your watch party and invite friends</p>
+			<h1 class="mb-2 text-2xl sm:text-3xl font-bold text-white">Create a Room</h1>
+			<p class="text-white/60 text-sm sm:text-base">Set up your watch party and invite friends</p>
 		</div>
 
 		<form
@@ -59,20 +63,20 @@
 					type="text"
 					bind:value={roomName}
 					placeholder="e.g., Movie Night with Friends"
-					class="w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none"
 					disabled={loading}
+					class="w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
 				/>
 			</div>
 
-			<fieldset>
+			<fieldset disabled={loading}>
 				<legend class="mb-3 block text-sm font-medium text-white/80"> Privacy </legend>
-				<div class="grid grid-cols-2 gap-3">
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
 					<button
 						type="button"
 						onclick={() => (isPublic = true)}
 						class="rounded-lg border-2 p-4 text-left transition
-              {isPublic ? 'border-purple-500 bg-purple-500/10' : 'border-white/20 bg-white/5'}"
-						disabled={loading}
+              {isPublic ? 'border-purple-500 bg-purple-500/10' : 'border-white/20 bg-white/5'}
+              disabled:opacity-50 disabled:cursor-not-allowed"
 					>
 						<Globe class="mb-2 h-5 w-5 {isPublic ? 'text-purple-400' : 'text-white/60'}" />
 						<div class="mb-1 text-sm font-medium text-white">Public</div>
@@ -83,8 +87,8 @@
 						type="button"
 						onclick={() => (isPublic = false)}
 						class="rounded-lg border-2 p-4 text-left transition
-              {!isPublic ? 'border-purple-500 bg-purple-500/10' : 'border-white/20 bg-white/5'}"
-						disabled={loading}
+              {!isPublic ? 'border-purple-500 bg-purple-500/10' : 'border-white/20 bg-white/5'}
+              disabled:opacity-50 disabled:cursor-not-allowed"
 					>
 						<Lock class="mb-2 h-5 w-5 {!isPublic ? 'text-purple-400' : 'text-white/60'}" />
 						<div class="mb-1 text-sm font-medium text-white">Private</div>
@@ -99,21 +103,26 @@
 				</div>
 			{/if}
 
-			<div class="flex gap-3 pt-4">
+			<div class="flex flex-col sm:flex-row gap-3 pt-4">
 				<button
 					type="button"
 					onclick={() => goto('/dashboard')}
-					class="flex-1 rounded-lg bg-white/10 px-6 py-3 font-medium text-white transition hover:bg-white/20"
 					disabled={loading}
+					class="flex-1 rounded-lg bg-white/10 px-6 py-3 font-medium text-white transition hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
 				>
 					Cancel
 				</button>
 				<button
 					type="submit"
-					class="bg-primary flex-1 rounded-lg px-6 py-3 font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 					disabled={loading || !roomName.trim()}
+					class="bg-linear-to-r from-purple-500 to-pink-500 flex-1 rounded-lg px-6 py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
 				>
-					{loading ? 'Creating...' : 'Create Room'}
+					{#if loading}
+						<Loader class="h-5 w-5 animate-spin" />
+						<span>Creating...</span>
+					{:else}
+						Create Room
+					{/if}
 				</button>
 			</div>
 		</form>
