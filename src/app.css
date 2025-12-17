@@ -3,122 +3,122 @@
 @plugin '@tailwindcss/typography';
 
 :root {
-  --color-primary: #8b5cf6;
-  --color-secondary: #ec4899;
-  --color-surface: rgba(255, 255, 255, 0.05);
-  --color-surface-hover: rgba(255, 255, 255, 0.1);
-  --color-input: rgba(0, 0, 0, 0.3);
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-text-primary: #ffffff;
-  --color-text-secondary: rgba(255, 255, 255, 0.8);
-  --color-text-muted: rgba(255, 255, 255, 0.4);
+	--color-primary: #8b5cf6;
+	--color-secondary: #ec4899;
+	--color-surface: rgba(255, 255, 255, 0.05);
+	--color-surface-hover: rgba(255, 255, 255, 0.1);
+	--color-input: rgba(0, 0, 0, 0.3);
+	--color-border: rgba(255, 255, 255, 0.1);
+	--color-text-primary: #ffffff;
+	--color-text-secondary: rgba(255, 255, 255, 0.8);
+	--color-text-muted: rgba(255, 255, 255, 0.4);
 }
 
 .bg-primary {
-  background-color: var(--color-primary);
+	background-color: var(--color-primary);
 }
 
 .bg-secondary {
-  background-color: var(--color-secondary);
+	background-color: var(--color-secondary);
 }
 
 .bg-surface {
-  background-color: var(--color-surface);
+	background-color: var(--color-surface);
 }
 
 .bg-surface-hover {
-  background-color: var(--color-surface-hover);
+	background-color: var(--color-surface-hover);
 }
 
 .bg-input {
-  background-color: var(--color-input);
+	background-color: var(--color-input);
 }
 
 .border-border {
-  border-color: var(--color-border);
+	border-color: var(--color-border);
 }
 
 .text-text-primary {
-  color: var(--color-text-primary);
+	color: var(--color-text-primary);
 }
 
 .text-text-secondary {
-  color: var(--color-text-secondary);
+	color: var(--color-text-secondary);
 }
 
 .text-text-muted {
-  color: var(--color-text-muted);
+	color: var(--color-text-muted);
 }
 
 .text-primary {
-  color: var(--color-primary);
+	color: var(--color-primary);
 }
 
 .hover\:bg-primary\/90:hover {
-  background-color: color-mix(in srgb, var(--color-primary) 90%, transparent);
+	background-color: color-mix(in srgb, var(--color-primary) 90%, transparent);
 }
 
 .hover\:bg-secondary\/90:hover {
-  background-color: color-mix(in srgb, var(--color-secondary) 90%, transparent);
+	background-color: color-mix(in srgb, var(--color-secondary) 90%, transparent);
 }
 
 .bg-primary\/10 {
-  background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+	background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
 .bg-gradient-to-br {
-  background-image: linear-gradient(to bottom right, var(--tw-gradient-stops));
+	background-image: linear-gradient(to bottom right, var(--tw-gradient-stops));
 }
 
 .from-primary {
-  --tw-gradient-from: var(--color-primary);
-  --tw-gradient-to: rgb(255 255 255 / 0);
-  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+	--tw-gradient-from: var(--color-primary);
+	--tw-gradient-to: rgb(255 255 255 / 0);
+	--tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
 
 .to-secondary {
-  --tw-gradient-to: var(--color-secondary);
+	--tw-gradient-to: var(--color-secondary);
 }
 
 .accent-primary {
-  accent-color: var(--color-primary);
+	accent-color: var(--color-primary);
 }
 
 /* Button text colors for better contrast */
 .bg-primary {
-  background-color: var(--color-primary);
+	background-color: var(--color-primary);
 }
 
 .text-primary {
-  color: var(--color-primary);
+	color: var(--color-primary);
 }
 
 /* Ensure buttons with primary background have proper text color */
 button.bg-primary,
 a.bg-primary,
 .bg-primary.text-white {
-  color: #000000;
+	color: #000000;
 }
 
 /* Override for sunishka theme specifically */
-:root:has([data-theme="sunishka"]) button.bg-primary,
-:root:has([data-theme="sunishka"]) a.bg-primary,
-:root:has([data-theme="sunishka"]) .bg-primary {
-  color: #000000 !important;
+:root:has([data-theme='sunishka']) button.bg-primary,
+:root:has([data-theme='sunishka']) a.bg-primary,
+:root:has([data-theme='sunishka']) .bg-primary {
+	color: #000000 !important;
 }
 
 /* For hover states */
 .hover\:bg-primary\/90:hover {
-  background-color: color-mix(in srgb, var(--color-primary) 90%, transparent);
-  color: #000000;
+	background-color: color-mix(in srgb, var(--color-primary) 90%, transparent);
+	color: #000000;
 }
 
 .bg-secondary {
-  background-color: var(--color-secondary);
-  color: #000000;
+	background-color: var(--color-secondary);
+	color: #000000;
 }
 
 .hover\:bg-secondary\/90:hover {
-  background-color: color-mix(in srgb, var(--color-secondary) 90%, transparent);
-  color: #000000;
+	background-color: color-mix(in srgb, var(--color-secondary) 90%, transparent);
+	color: #000000;
 }

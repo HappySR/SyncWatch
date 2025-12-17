@@ -4,257 +4,260 @@ import { authStore } from './auth.svelte';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 class PlayerStore {
-  isPlaying = $state(false);
-  currentTime = $state(0);
-  duration = $state(0);
-  volume = $state(1);
-  videoUrl = $state<string | null>(null);
-  videoType = $state<'youtube' | 'direct' | null>(null);
-  
-  isSyncing = $state(false);
-  private channel: RealtimeChannel | null = null;
-  private isProcessingEvent = false;
-  private currentRoomId: string | null = null;
+	isPlaying = $state(false);
+	currentTime = $state(0);
+	duration = $state(0);
+	volume = $state(1);
+	videoUrl = $state<string | null>(null);
+	videoType = $state<'youtube' | 'direct' | null>(null);
 
-  subscribeToRoom(roomId: string) {
-    if (this.currentRoomId === roomId && this.channel) {
-      console.log('Already subscribed to room:', roomId);
-      return;
-    }
+	isSyncing = $state(false);
+	private channel: RealtimeChannel | null = null;
+	private isProcessingEvent = false;
+	private currentRoomId: string | null = null;
 
-    this.unsubscribeFromRoom();
-    console.log('🔌 Subscribing to room:', roomId);
-    this.currentRoomId = roomId;
+	subscribeToRoom(roomId: string) {
+		if (this.currentRoomId === roomId && this.channel) {
+			console.log('Already subscribed to room:', roomId);
+			return;
+		}
 
-    this.channel = supabase.channel(`player:${roomId}`, {
-      config: {
-        broadcast: { ack: false }, // Don't wait for acknowledgment - faster!
-      },
-    })
-      .on('broadcast', { event: 'player-action' }, (payload) => {
-        this.handleRealtimeEvent(payload.payload);
-      })
-      .subscribe((status) => {
-        console.log('✅ Player channel status:', status);
-      });
-  }
+		this.unsubscribeFromRoom();
+		console.log('🔌 Subscribing to room:', roomId);
+		this.currentRoomId = roomId;
 
-  unsubscribeFromRoom() {
-    if (this.channel) {
-      supabase.removeChannel(this.channel);
-      this.channel = null;
-      this.currentRoomId = null;
-    }
-  }
+		this.channel = supabase
+			.channel(`player:${roomId}`, {
+				config: {
+					broadcast: { ack: false } // Don't wait for acknowledgment - faster!
+				}
+			})
+			.on('broadcast', { event: 'player-action' }, (payload) => {
+				this.handleRealtimeEvent(payload.payload);
+			})
+			.subscribe((status) => {
+				console.log('✅ Player channel status:', status);
+			});
+	}
 
-  handleRealtimeEvent(event: any) {
-    // Skip own events except video changes
-    if (event.userId === authStore.user?.id && event.type !== 'change_video') {
-      return;
-    }
+	unsubscribeFromRoom() {
+		if (this.channel) {
+			supabase.removeChannel(this.channel);
+			this.channel = null;
+			this.currentRoomId = null;
+		}
+	}
 
-    if (this.isProcessingEvent && event.type !== 'change_video') {
-      return;
-    }
+	handleRealtimeEvent(event: any) {
+		// Skip own events except video changes
+		if (event.userId === authStore.user?.id && event.type !== 'change_video') {
+			return;
+		}
 
-    console.log('📥 Received real-time event:', event.type);
-    
-    this.isProcessingEvent = true;
-    this.isSyncing = true;
+		if (this.isProcessingEvent && event.type !== 'change_video') {
+			return;
+		}
 
-    try {
-      switch (event.type) {
-        case 'play':
-          this.isPlaying = true;
-          if (event.time !== undefined) {
-            this.currentTime = event.time;
-          }
-          break;
-        
-        case 'pause':
-          this.isPlaying = false;
-          if (event.time !== undefined) {
-            this.currentTime = event.time;
-          }
-          break;
-        
-        case 'seek':
-          if (event.time !== undefined) {
-            this.currentTime = event.time;
-          }
-          break;
-        
-        case 'change_video':
-          console.log('📺 Video change received:', event.url);
-          if (event.url) {
-            this.videoUrl = event.url;
-            this.videoType = event.videoType || this.detectVideoType(event.url);
-            this.currentTime = 0;
-            this.isPlaying = false;
-          }
-          break;
-      }
-    } finally {
-      setTimeout(() => {
-        this.isSyncing = false;
-        this.isProcessingEvent = false;
-      }, event.type === 'change_video' ? 1500 : 50);
-    }
-  }
+		console.log('📥 Received real-time event:', event.type);
 
-  detectVideoType(url: string): 'youtube' | 'direct' {
-    return (url.includes('youtube.com') || url.includes('youtu.be')) ? 'youtube' : 'direct';
-  }
+		this.isProcessingEvent = true;
+		this.isSyncing = true;
 
-  async broadcastEvent(type: string, data: any = {}) {
-    if (!this.channel || !authStore.user) return;
+		try {
+			switch (event.type) {
+				case 'play':
+					this.isPlaying = true;
+					if (event.time !== undefined) {
+						this.currentTime = event.time;
+					}
+					break;
 
-    const payload = {
-      type,
-      userId: authStore.user.id,
-      timestamp: Date.now(),
-      ...data
-    };
+				case 'pause':
+					this.isPlaying = false;
+					if (event.time !== undefined) {
+						this.currentTime = event.time;
+					}
+					break;
 
-    console.log('📤 Broadcasting:', type);
+				case 'seek':
+					if (event.time !== undefined) {
+						this.currentTime = event.time;
+					}
+					break;
 
-    // Broadcast via Realtime (instant!)
-    await this.channel.send({
-      type: 'broadcast',
-      event: 'player-action',
-      payload
-    });
+				case 'change_video':
+					console.log('📺 Video change received:', event.url);
+					if (event.url) {
+						this.videoUrl = event.url;
+						this.videoType = event.videoType || this.detectVideoType(event.url);
+						this.currentTime = 0;
+						this.isPlaying = false;
+					}
+					break;
+			}
+		} finally {
+			setTimeout(
+				() => {
+					this.isSyncing = false;
+					this.isProcessingEvent = false;
+				},
+				event.type === 'change_video' ? 1500 : 50
+			);
+		}
+	}
 
-    // Update database in background (don't await)
-    this.updateRoomStateInBackground(type, data);
-  }
+	detectVideoType(url: string): 'youtube' | 'direct' {
+		return url.includes('youtube.com') || url.includes('youtu.be') ? 'youtube' : 'direct';
+	}
 
-  updateRoomStateInBackground(type: string, data: any) {
-    if (!roomStore.currentRoom) return;
+	async broadcastEvent(type: string, data: any = {}) {
+		if (!this.channel || !authStore.user) return;
 
-    const updates: any = {
-      last_updated: new Date().toISOString()
-    };
+		const payload = {
+			type,
+			userId: authStore.user.id,
+			timestamp: Date.now(),
+			...data
+		};
 
-    switch (type) {
-      case 'play':
-        updates.is_playing = true;
-        updates.video_time = data.time ?? this.currentTime;
-        break;
-      case 'pause':
-        updates.is_playing = false;
-        updates.video_time = data.time ?? this.currentTime;
-        break;
-      case 'seek':
-        updates.video_time = data.time ?? this.currentTime;
-        break;
-      case 'change_video':
-        updates.current_video_url = data.url;
-        updates.current_video_type = data.videoType;
-        updates.video_time = 0;
-        updates.is_playing = false;
-        break;
-    }
+		console.log('📤 Broadcasting:', type);
 
-    // Fire and forget - don't block the UI
-    supabase
-      .from('rooms')
-      .update(updates)
-      .eq('id', roomStore.currentRoom.id)
-      .then(({ error }) => {
-        if (error) console.error('❌ Background DB update failed:', error);
-        else console.log('✅ DB updated in background');
-      });
-  }
+		// Broadcast via Realtime (instant!)
+		await this.channel.send({
+			type: 'broadcast',
+			event: 'player-action',
+			payload
+		});
 
-  async play() {
-    if (!this.canControl()) return;
-    this.isPlaying = true;
-    await this.broadcastEvent('play', { time: this.currentTime });
-  }
+		// Update database in background (don't await)
+		this.updateRoomStateInBackground(type, data);
+	}
 
-  async pause() {
-    if (!this.canControl()) return;
-    this.isPlaying = false;
-    await this.broadcastEvent('pause', { time: this.currentTime });
-  }
+	updateRoomStateInBackground(type: string, data: any) {
+		if (!roomStore.currentRoom) return;
 
-  async seek(time: number) {
-    if (!this.canControl()) return;
-    this.currentTime = time;
-    await this.broadcastEvent('seek', { time });
-  }
+		const updates: any = {
+			last_updated: new Date().toISOString()
+		};
 
-  async changeVideo(url: string, type: 'youtube' | 'direct') {
-    if (!this.canControl()) return;
-    
-    console.log('🎬 Changing video to:', url);
+		switch (type) {
+			case 'play':
+				updates.is_playing = true;
+				updates.video_time = data.time ?? this.currentTime;
+				break;
+			case 'pause':
+				updates.is_playing = false;
+				updates.video_time = data.time ?? this.currentTime;
+				break;
+			case 'seek':
+				updates.video_time = data.time ?? this.currentTime;
+				break;
+			case 'change_video':
+				updates.current_video_url = data.url;
+				updates.current_video_type = data.videoType;
+				updates.video_time = 0;
+				updates.is_playing = false;
+				break;
+		}
 
-    // Update local state immediately
-    this.videoUrl = url;
-    this.videoType = type;
-    this.currentTime = 0;
-    this.isPlaying = false;
-    
-    // Broadcast to all users instantly
-    await this.broadcastEvent('change_video', { url, videoType: type });
-  }
+		// Fire and forget - don't block the UI
+		supabase
+			.from('rooms')
+			.update(updates)
+			.eq('id', roomStore.currentRoom.id)
+			.then(({ error }) => {
+				if (error) console.error('❌ Background DB update failed:', error);
+				else console.log('✅ DB updated in background');
+			});
+	}
 
-  canControl(): boolean {
-    if (!authStore.user || !roomStore.currentRoom) return false;
-    
-    const member = roomStore.members.find(m => m.user_id === authStore.user?.id);
-    return member?.has_controls ?? false;
-  }
+	async play() {
+		if (!this.canControl()) return;
+		this.isPlaying = true;
+		await this.broadcastEvent('play', { time: this.currentTime });
+	}
 
-  async syncWithRoom() {
-    if (!roomStore.currentRoom) return;
+	async pause() {
+		if (!this.canControl()) return;
+		this.isPlaying = false;
+		await this.broadcastEvent('pause', { time: this.currentTime });
+	}
 
-    console.log('🔄 Syncing with room...');
-    this.isSyncing = true;
+	async seek(time: number) {
+		if (!this.canControl()) return;
+		this.currentTime = time;
+		await this.broadcastEvent('seek', { time });
+	}
 
-    try {
-      const { data: freshRoom } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('id', roomStore.currentRoom.id)
-        .single();
+	async changeVideo(url: string, type: 'youtube' | 'direct') {
+		if (!this.canControl()) return;
 
-      if (freshRoom) {
-        this.videoUrl = freshRoom.current_video_url;
-        this.videoType = freshRoom.current_video_type as 'youtube' | 'direct' | null;
-        
-        // Calculate actual time if playing
-        let syncTime = freshRoom.video_time || 0;
-        if (freshRoom.is_playing && freshRoom.last_updated) {
-          const elapsed = (Date.now() - new Date(freshRoom.last_updated).getTime()) / 1000;
-          syncTime += elapsed;
-        }
-        
-        this.currentTime = syncTime;
-        this.isPlaying = freshRoom.is_playing || false;
-        
-        console.log('✅ Synced:', { url: this.videoUrl, time: syncTime });
-      }
+		console.log('🎬 Changing video to:', url);
 
-      if (roomStore.currentRoom.id) {
-        this.subscribeToRoom(roomStore.currentRoom.id);
-      }
+		// Update local state immediately
+		this.videoUrl = url;
+		this.videoType = type;
+		this.currentTime = 0;
+		this.isPlaying = false;
 
-    } finally {
-      setTimeout(() => {
-        this.isSyncing = false;
-      }, 1500);
-    }
-  }
+		// Broadcast to all users instantly
+		await this.broadcastEvent('change_video', { url, videoType: type });
+	}
 
-  setVolume(vol: number) {
-    this.volume = Math.max(0, Math.min(1, vol));
-  }
+	canControl(): boolean {
+		if (!authStore.user || !roomStore.currentRoom) return false;
 
-  cleanup() {
-    this.unsubscribeFromRoom();
-  }
+		const member = roomStore.members.find((m) => m.user_id === authStore.user?.id);
+		return member?.has_controls ?? false;
+	}
+
+	async syncWithRoom() {
+		if (!roomStore.currentRoom) return;
+
+		console.log('🔄 Syncing with room...');
+		this.isSyncing = true;
+
+		try {
+			const { data: freshRoom } = await supabase
+				.from('rooms')
+				.select('*')
+				.eq('id', roomStore.currentRoom.id)
+				.single();
+
+			if (freshRoom) {
+				this.videoUrl = freshRoom.current_video_url;
+				this.videoType = freshRoom.current_video_type as 'youtube' | 'direct' | null;
+
+				// Calculate actual time if playing
+				let syncTime = freshRoom.video_time || 0;
+				if (freshRoom.is_playing && freshRoom.last_updated) {
+					const elapsed = (Date.now() - new Date(freshRoom.last_updated).getTime()) / 1000;
+					syncTime += elapsed;
+				}
+
+				this.currentTime = syncTime;
+				this.isPlaying = freshRoom.is_playing || false;
+
+				console.log('✅ Synced:', { url: this.videoUrl, time: syncTime });
+			}
+
+			if (roomStore.currentRoom.id) {
+				this.subscribeToRoom(roomStore.currentRoom.id);
+			}
+		} finally {
+			setTimeout(() => {
+				this.isSyncing = false;
+			}, 1500);
+		}
+	}
+
+	setVolume(vol: number) {
+		this.volume = Math.max(0, Math.min(1, vol));
+	}
+
+	cleanup() {
+		this.unsubscribeFromRoom();
+	}
 }
 
 export const playerStore = new PlayerStore();

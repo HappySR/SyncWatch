@@ -1,134 +1,136 @@
 <script lang="ts">
-  import { roomStore } from '$lib/stores/room.svelte';
-  import { goto } from '$app/navigation';
-  import { Video, Users, Lock, Globe } from 'lucide-svelte';
+	import { roomStore } from '$lib/stores/room.svelte';
+	import { goto } from '$app/navigation';
+	import { Video, Users, Lock, Globe } from 'lucide-svelte';
 
-  let roomName = $state('');
-  let isPublic = $state(true);
-  let loading = $state(false);
-  let error = $state<string | null>(null);
+	let roomName = $state('');
+	let isPublic = $state(true);
+	let loading = $state(false);
+	let error = $state<string | null>(null);
 
-  async function handleCreateRoom() {
-    if (!roomName.trim()) {
-      error = 'Please enter a room name';
-      return;
-    }
+	async function handleCreateRoom() {
+		if (!roomName.trim()) {
+			error = 'Please enter a room name';
+			return;
+		}
 
-    loading = true;
-    error = null;
+		loading = true;
+		error = null;
 
-    try {
-      const roomId = await roomStore.createRoom(roomName.trim());
-      console.log('Room created with ID:', roomId);
-      // Small delay to ensure database writes complete
-      await new Promise(resolve => setTimeout(resolve, 500));
-      goto(`/room/${roomId}`);
-    } catch (err: any) {
-      console.error('Create room error:', err);
-      error = err.message || 'Failed to create room';
-      loading = false;
-    }
-  }
+		try {
+			const roomId = await roomStore.createRoom(roomName.trim());
+			console.log('Room created with ID:', roomId);
+			// Small delay to ensure database writes complete
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			goto(`/room/${roomId}`);
+		} catch (err: any) {
+			console.error('Create room error:', err);
+			error = err.message || 'Failed to create room';
+			loading = false;
+		}
+	}
 </script>
 
-<div class="max-w-2xl mx-auto px-4 py-12">
-  <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
-    <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-16 h-16 bg-linear-to-br from-purple-500 to-pink-500 rounded-2xl mb-4">
-        <Video class="w-8 h-8 text-white" />
-      </div>
-      <h1 class="text-3xl font-bold text-white mb-2">Create a Room</h1>
-      <p class="text-white/60">Set up your watch party and invite friends</p>
-    </div>
+<div class="mx-auto max-w-2xl px-4 py-12">
+	<div class="rounded-2xl border border-white/10 bg-white/5 p-8 backdrop-blur-sm">
+		<div class="mb-8 text-center">
+			<div
+				class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-purple-500 to-pink-500"
+			>
+				<Video class="h-8 w-8 text-white" />
+			</div>
+			<h1 class="mb-2 text-3xl font-bold text-white">Create a Room</h1>
+			<p class="text-white/60">Set up your watch party and invite friends</p>
+		</div>
 
-    <form onsubmit={(e) => { e.preventDefault(); handleCreateRoom(); }} class="space-y-6">
-      <div>
-        <label for="roomName" class="block text-white/80 text-sm font-medium mb-2">
-          Room Name
-        </label>
-        <input
-          id="roomName"
-          type="text"
-          bind:value={roomName}
-          placeholder="e.g., Movie Night with Friends"
-          class="w-full bg-black/30 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-purple-500"
-          disabled={loading}
-        />
-      </div>
+		<form
+			onsubmit={(e) => {
+				e.preventDefault();
+				handleCreateRoom();
+			}}
+			class="space-y-6"
+		>
+			<div>
+				<label for="roomName" class="mb-2 block text-sm font-medium text-white/80">
+					Room Name
+				</label>
+				<input
+					id="roomName"
+					type="text"
+					bind:value={roomName}
+					placeholder="e.g., Movie Night with Friends"
+					class="w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none"
+					disabled={loading}
+				/>
+			</div>
 
-      <fieldset>
-        <legend class="block text-white/80 text-sm font-medium mb-3">
-          Privacy
-        </legend>
-        <div class="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onclick={() => isPublic = true}
-            class="p-4 rounded-lg border-2 transition text-left
-              {isPublic
-                ? 'border-purple-500 bg-purple-500/10'
-                : 'border-white/20 bg-white/5'}"
-            disabled={loading}
-          >
-            <Globe class="w-5 h-5 mb-2 {isPublic ? 'text-purple-400' : 'text-white/60'}" />
-            <div class="text-white font-medium text-sm mb-1">Public</div>
-            <div class="text-white/60 text-xs">Anyone can join with room ID</div>
-          </button>
+			<fieldset>
+				<legend class="mb-3 block text-sm font-medium text-white/80"> Privacy </legend>
+				<div class="grid grid-cols-2 gap-3">
+					<button
+						type="button"
+						onclick={() => (isPublic = true)}
+						class="rounded-lg border-2 p-4 text-left transition
+              {isPublic ? 'border-purple-500 bg-purple-500/10' : 'border-white/20 bg-white/5'}"
+						disabled={loading}
+					>
+						<Globe class="mb-2 h-5 w-5 {isPublic ? 'text-purple-400' : 'text-white/60'}" />
+						<div class="mb-1 text-sm font-medium text-white">Public</div>
+						<div class="text-xs text-white/60">Anyone can join with room ID</div>
+					</button>
 
-          <button
-            type="button"
-            onclick={() => isPublic = false}
-            class="p-4 rounded-lg border-2 transition text-left
-              {!isPublic
-                ? 'border-purple-500 bg-purple-500/10'
-                : 'border-white/20 bg-white/5'}"
-            disabled={loading}
-          >
-            <Lock class="w-5 h-5 mb-2 {!isPublic ? 'text-purple-400' : 'text-white/60'}" />
-            <div class="text-white font-medium text-sm mb-1">Private</div>
-            <div class="text-white/60 text-xs">Invite only (coming soon)</div>
-          </button>
-        </div>
-      </fieldset>
+					<button
+						type="button"
+						onclick={() => (isPublic = false)}
+						class="rounded-lg border-2 p-4 text-left transition
+              {!isPublic ? 'border-purple-500 bg-purple-500/10' : 'border-white/20 bg-white/5'}"
+						disabled={loading}
+					>
+						<Lock class="mb-2 h-5 w-5 {!isPublic ? 'text-purple-400' : 'text-white/60'}" />
+						<div class="mb-1 text-sm font-medium text-white">Private</div>
+						<div class="text-xs text-white/60">Invite only (coming soon)</div>
+					</button>
+				</div>
+			</fieldset>
 
-      {#if error}
-        <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
-          {error}
-        </div>
-      {/if}
+			{#if error}
+				<div class="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+					{error}
+				</div>
+			{/if}
 
-      <div class="flex gap-3 pt-4">
-        <button
-          type="button"
-          onclick={() => goto('/dashboard')}
-          class="flex-1 bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-lg transition font-medium"
-          disabled={loading}
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          class="flex-1 bg-primary hover:opacity-90 px-6 py-3 rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed text-black"
-          disabled={loading || !roomName.trim()}
-        >
-          {loading ? 'Creating...' : 'Create Room'}
-        </button>
-      </div>
-    </form>
+			<div class="flex gap-3 pt-4">
+				<button
+					type="button"
+					onclick={() => goto('/dashboard')}
+					class="flex-1 rounded-lg bg-white/10 px-6 py-3 font-medium text-white transition hover:bg-white/20"
+					disabled={loading}
+				>
+					Cancel
+				</button>
+				<button
+					type="submit"
+					class="bg-primary flex-1 rounded-lg px-6 py-3 font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+					disabled={loading || !roomName.trim()}
+				>
+					{loading ? 'Creating...' : 'Create Room'}
+				</button>
+			</div>
+		</form>
 
-    <div class="mt-8 pt-6 border-t border-white/10">
-      <div class="flex gap-3 text-white/60 text-sm">
-        <Users class="w-5 h-5 shrink-0" />
-        <div>
-          <p class="font-medium text-white/80 mb-1">What happens next?</p>
-          <ul class="space-y-1 text-xs">
-            <li>• You'll be the host of this room</li>
-            <li>• Share the room ID with friends to invite them</li>
-            <li>• You can control who has video controls</li>
-            <li>• Load any YouTube, direct link, or Google Drive video</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
+		<div class="mt-8 border-t border-white/10 pt-6">
+			<div class="flex gap-3 text-sm text-white/60">
+				<Users class="h-5 w-5 shrink-0" />
+				<div>
+					<p class="mb-1 font-medium text-white/80">What happens next?</p>
+					<ul class="space-y-1 text-xs">
+						<li>• You'll be the host of this room</li>
+						<li>• Share the room ID with friends to invite them</li>
+						<li>• You can control who has video controls</li>
+						<li>• Load any YouTube, direct link, or Google Drive video</li>
+					</ul>
+				</div>
+			</div>
+		</div>
+	</div>
 </div>
