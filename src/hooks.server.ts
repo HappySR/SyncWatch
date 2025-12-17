@@ -4,11 +4,10 @@ import type { Handle } from '@sveltejs/kit';
 export const handle: Handle = async ({ event, resolve }) => {
   const session = event.cookies.get('sb-access-token');
   
-  // Define public routes that don't require authentication
   const publicRoutes = ['/', '/auth/callback'];
+  const isApiRoute = event.url.pathname.startsWith('/api/');
   
-  // Check if current path requires authentication
-  const requiresAuth = !publicRoutes.includes(event.url.pathname);
+  const requiresAuth = !publicRoutes.includes(event.url.pathname) && !isApiRoute;
   
   if (requiresAuth && !session) {
     throw redirect(303, '/');
