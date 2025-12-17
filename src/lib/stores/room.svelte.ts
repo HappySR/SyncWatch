@@ -78,35 +78,30 @@ class RoomStore {
 
       console.log('Room exists:', roomExists);
 
-      // Check if already a member
-      const { data: existing, error: _memberCheckError } = await supabase
+      // Use UPSERT to handle duplicate memberships gracefully
+      const { data, error } = await supabase
         .from('room_members')
-        .select()
-        .eq('room_id', roomId)
-        .eq('user_id', authStore.user.id)
-        .maybeSingle();
-
-      console.log('Existing membership:', existing);
-
-      if (!existing) {
-        console.log('Adding user as new member');
-        // Add as member with controls enabled by default
-        const { error: insertError } = await supabase
-          .from('room_members')
-          .insert({
-            room_id: roomId,
+        .upsert(
+          { 
+            room_id: roomId, 
             user_id: authStore.user.id,
-            has_controls: true
-          });
+            has_controls: true,
+            joined_at: new Date().toISOString()
+          },
+          { 
+            onConflict: 'room_id,user_id',
+            ignoreDuplicates: false // Update joined_at if already exists
+          }
+        )
+        .select()
+        .single();
 
-        if (insertError) {
-          console.error('Failed to add member:', insertError);
-          throw insertError;
-        }
-        console.log('Member added successfully');
-      } else {
-        console.log('User is already a member');
+      if (error) {
+        console.error('Failed to join room:', error);
+        throw error;
       }
+
+      console.log('Successfully joined room:', data);
 
       await this.loadRoom(roomId);
       this.subscribeToRoom(roomId);
