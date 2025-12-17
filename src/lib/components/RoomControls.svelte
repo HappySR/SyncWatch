@@ -53,9 +53,24 @@
     } else {
       detectedType = 'direct';
       
-      if (!processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
+      // Handle Google Drive links
+      if (processedUrl.includes('drive.google.com')) {
+        const fileIdMatch = processedUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        const idMatch = processedUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        
+        const fileId = fileIdMatch?.[1] || idMatch?.[1];
+        
+        if (fileId) {
+          processedUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+          console.log('✅ Converted Google Drive URL:', processedUrl);
+        } else {
+          alert('Invalid Google Drive URL. Please use a share link.');
+          return;
+        }
+      } else if (!processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
         processedUrl = 'https://' + processedUrl;
       }
+      
       console.log('✅ Processed Direct URL:', processedUrl);
     }
 
@@ -134,7 +149,8 @@
       {:else}
         <p>• Direct links to video files (.mp4, .webm, .ogg)</p>
         <p>• Must be publicly accessible (no login required)</p>
-        <p>• Includes Google Drive preview links</p>
+        <p>• Google Drive: Use share link (will be auto-converted)</p>
+        <p class="mt-2 text-text-secondary">Note: For Google Drive, make sure sharing is set to "Anyone with the link"</p>
       {/if}
     </div>
   </div>
