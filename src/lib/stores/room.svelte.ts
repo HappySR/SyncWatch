@@ -220,29 +220,16 @@ class RoomStore {
       });
     });
 
-    // Reload all members from database
-    if (this.currentRoom) {
-      const { data } = await supabase
-        .from('room_members')
-        .select(`
-          *,
-          profiles (*)
-        `)
-        .eq('room_id', this.currentRoom.id);
-      
-      if (data) {
-        // ⭐ KEY CHANGE: Show ALL members, mark who's online
-        this.members = data.map(member => ({
-          ...member,
-          is_online: onlineUserIds.has(member.user_id)
-        }));
-        
-        console.log('📊 Members updated:', {
-          total: this.members.length,
-          online: this.members.filter(m => m.is_online).length
-        });
-      }
-    }
+    // Only update online status, don't reload from database
+    this.members = this.members.map(member => ({
+      ...member,
+      is_online: onlineUserIds.has(member.user_id)
+    }));
+    
+    console.log('📊 Members online status updated:', {
+      total: this.members.length,
+      online: this.members.filter(m => m.is_online).length
+    });
   }
 
   subscribeToRoom(roomId: string) {
@@ -281,8 +268,9 @@ class RoomStore {
           table: 'room_members',
           filter: `room_id=eq.${roomId}`
         },
-        () => {
-          console.log('👥 Members changed');
+        (payload) => {
+          console.log('👥 Members changed:', payload.eventType);
+          // Immediately reload members when someone joins/leaves
           this.loadMembers(roomId);
         }
       )
