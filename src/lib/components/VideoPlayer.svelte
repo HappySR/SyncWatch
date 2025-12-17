@@ -15,6 +15,9 @@
   const isPlaying = $derived(playerStore.isPlaying);
   const currentTime = $derived(playerStore.currentTime);
 
+  // Check if it's a Google Drive preview URL
+  const isGoogleDrive = $derived(videoUrl?.includes('drive.google.com/file/') && videoUrl?.includes('/preview'));
+
   let lastYtTime = 0;
   let ytSyncInterval: any = null;
   let isYouTubeReady = $state(false);
@@ -319,7 +322,35 @@
         <Maximize class="w-5 h-5" />
       {/if}
     </button>
+  {:else if isGoogleDrive}
+    <!-- Google Drive Embed Player -->
+    <iframe
+      src={videoUrl}
+      class="w-full h-full"
+      allow="autoplay"
+      allowfullscreen
+      title="Video player"
+    ></iframe>
+    
+    <button
+      onclick={toggleFullscreen}
+      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-100 opacity-100 pointer-events-auto"
+      title="Toggle Fullscreen"
+      aria-label="Toggle Fullscreen"
+    >
+      {#if isFullscreen}
+        <Minimize class="w-5 h-5" />
+      {:else}
+        <Maximize class="w-5 h-5" />
+      {/if}
+    </button>
+
+    <!-- Note: Google Drive embeds have their own controls -->
+    <div class="absolute bottom-4 left-4 bg-black/80 text-white/80 text-xs px-3 py-2 rounded-lg backdrop-blur-sm">
+      ℹ️ Use Google Drive's built-in controls. Sync may not work with Drive videos.
+    </div>
   {:else}
+    <!-- Regular Direct Video -->
     <video
       bind:this={videoElement}
       class="w-full h-full"

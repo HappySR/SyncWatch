@@ -61,7 +61,8 @@
         const fileId = fileIdMatch?.[1] || idMatch?.[1];
         
         if (fileId) {
-          processedUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+          // Use the preview URL which works better for video streaming
+          processedUrl = `https://drive.google.com/file/d/${fileId}/preview`;
           console.log('✅ Converted Google Drive URL:', processedUrl);
         } else {
           alert('Invalid Google Drive URL. Please use a share link.');
