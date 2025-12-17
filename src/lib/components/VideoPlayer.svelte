@@ -1,7 +1,7 @@
 <script lang="ts">
   import { playerStore } from '$lib/stores/player.svelte';
   import { onMount, onDestroy } from 'svelte';
-  import { Maximize, Minimize } from 'lucide-svelte';
+  import { Maximize, Minimize, Loader, Video } from 'lucide-svelte';
 
   let { onFullscreenChange = () => {} } = $props<{ onFullscreenChange?: (isFullscreen: boolean) => void }>();
 
@@ -9,18 +9,22 @@
   let youtubePlayer: any;
   let isFullscreen = $state(false);
   let containerElement: HTMLDivElement | undefined = $state(undefined);
+  let isVideoLoading = $state(false);
 
   const videoUrl = $derived(playerStore.videoUrl);
   const videoType = $derived(playerStore.videoType);
   const isPlaying = $derived(playerStore.isPlaying);
   const currentTime = $derived(playerStore.currentTime);
 
-  // Check if it's a Google Drive preview URL
-  const isGoogleDrive = $derived(videoUrl?.includes('drive.google.com/file/') && videoUrl?.includes('/preview'));
-
+  // YouTube tracking
   let lastYtTime = 0;
   let ytSyncInterval: any = null;
   let isYouTubeReady = $state(false);
+
+  // Direct video tracking
+  let lastDirectTime = 0;
+  let directSyncInterval: any = null;
+  let isDirectVideoReady = $state(false);
 
   onMount(() => {
     loadYouTubeAPI();
@@ -29,13 +33,18 @@
   });
 
   onDestroy(() => {
+    cleanup();
+    document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+  });
+
+  function cleanup() {
     if (youtubePlayer) {
       youtubePlayer.destroy();
     }
     if (ytSyncInterval) clearInterval(ytSyncInterval);
-    document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-  });
+    if (directSyncInterval) clearInterval(directSyncInterval);
+  }
 
   function handleFullscreenChange() {
     const newFullscreenState = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
@@ -61,6 +70,8 @@
     }
   }
 
+  // ==================== YOUTUBE FUNCTIONS ====================
+
   function loadYouTubeAPI() {
     if (!(window as any).YT) {
       const tag = document.createElement('script');
@@ -74,7 +85,6 @@
         }
       };
     } else if ((window as any).YT && (window as any).YT.Player) {
-      // API already loaded
       if (videoType === 'youtube' && videoUrl) {
         initYouTubePlayer();
       }
@@ -90,7 +100,7 @@
     
     for (const pattern of patterns) {
       const match = url.match(pattern);
-      if (match) return match[1].substring(0, 11); // Ensure only 11 chars
+      if (match) return match[1].substring(0, 11);
     }
     return null;
   }
@@ -116,7 +126,6 @@
       ytSyncInterval = null;
     }
 
-    // Create new player
     youtubePlayer = new (window as any).YT.Player('youtube-player', {
       videoId,
       playerVars: {
@@ -127,7 +136,6 @@
         playsinline: 1,
         autoplay: 0,
         enablejsapi: 1,
-        // These help reduce buffering
         iv_load_policy: 3,
         disablekb: 0
       },
@@ -137,7 +145,6 @@
           isYouTubeReady = true;
           lastYtTime = currentTime;
           
-          // Set quality to auto (best for connection)
           try {
             event.target.setPlaybackQuality('default');
           } catch (e) {}
@@ -150,11 +157,8 @@
         onStateChange: (event: any) => {
           const YT = (window as any).YT;
           
-          if (playerStore.isSyncing) {
-            return;
-          }
+          if (playerStore.isSyncing) return;
           
-          // Only process user actions, not programmatic changes
           if (event.data === YT.PlayerState.PLAYING && !isPlaying) {
             const currentYtTime = youtubePlayer.getCurrentTime();
             playerStore.currentTime = currentYtTime;
@@ -175,9 +179,7 @@
   }
 
   function startYouTubeMonitoring() {
-    if (ytSyncInterval) {
-      clearInterval(ytSyncInterval);
-    }
+    if (ytSyncInterval) clearInterval(ytSyncInterval);
 
     ytSyncInterval = setInterval(() => {
       if (!youtubePlayer || !youtubePlayer.getCurrentTime || !isYouTubeReady) return;
@@ -190,7 +192,6 @@
           playerStore.duration = duration;
         }
         
-        // Only detect intentional seeks (jumps > 2 seconds)
         const timeDiff = Math.abs(ytTime - lastYtTime);
         if (timeDiff > 2 && !playerStore.isSyncing) {
           console.log('⏩ YouTube seek detected:', lastYtTime, '→', ytTime);
@@ -199,14 +200,11 @@
         
         lastYtTime = ytTime;
         
-        // Update current time smoothly
         if (!playerStore.isSyncing && isPlaying) {
           playerStore.currentTime = ytTime;
         }
-      } catch (e) {
-        // Ignore errors during monitoring
-      }
-    }, 500); // Check every 500ms for smooth playback
+      } catch (e) {}
+    }, 500);
   }
 
   function syncYouTubePlayer() {
@@ -218,7 +216,6 @@
       
       console.log('🔄 Syncing YouTube:', { isPlaying, currentTime, ytTime, state });
       
-      // Seek if time difference is significant
       const timeDiff = Math.abs(ytTime - currentTime);
       if (timeDiff > 1) {
         console.log('⏩ Seeking YouTube to:', currentTime);
@@ -226,7 +223,6 @@
         lastYtTime = currentTime;
       }
       
-      // Sync play/pause state
       const YT = (window as any).YT;
       if (isPlaying && state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING) {
         console.log('▶️ Starting YouTube playback');
@@ -240,58 +236,183 @@
     }
   }
 
+  // ==================== DIRECT VIDEO FUNCTIONS ====================
+
+  function initDirectVideo() {
+    if (!videoElement || !videoUrl || videoType !== 'direct') return;
+
+    console.log('🎬 Initializing direct video player');
+    isVideoLoading = true;
+    isDirectVideoReady = false;
+
+    // Set the source
+    videoElement.src = videoUrl;
+    
+    // Wait for it to load
+    videoElement.load();
+  }
+
+  function startDirectVideoMonitoring() {
+    if (directSyncInterval) clearInterval(directSyncInterval);
+
+    directSyncInterval = setInterval(() => {
+      if (!videoElement || !isDirectVideoReady) return;
+      
+      try {
+        const videoTime = videoElement.currentTime;
+        const duration = videoElement.duration;
+        
+        // Update duration
+        if (duration && !isNaN(duration) && duration !== playerStore.duration) {
+          playerStore.duration = duration;
+        }
+        
+        // Detect manual seeks (jumps > 2 seconds)
+        const timeDiff = Math.abs(videoTime - lastDirectTime);
+        if (timeDiff > 2 && !playerStore.isSyncing && !videoElement.seeking) {
+          console.log('⏩ Direct video seek detected:', lastDirectTime, '→', videoTime);
+          playerStore.seek(videoTime);
+        }
+        
+        lastDirectTime = videoTime;
+        
+        // Smooth time updates during playback
+        if (!playerStore.isSyncing && isPlaying && !videoElement.paused) {
+          playerStore.currentTime = videoTime;
+        }
+      } catch (e) {}
+    }, 500);
+  }
+
+  function syncDirectVideo() {
+    if (!videoElement || !isDirectVideoReady || videoType !== 'direct') return;
+
+    try {
+      const videoTime = videoElement.currentTime;
+      const isPaused = videoElement.paused;
+      
+      console.log('🔄 Syncing direct video:', { isPlaying, currentTime, videoTime, isPaused });
+      
+      // Seek if time difference is significant
+      const timeDiff = Math.abs(videoTime - currentTime);
+      if (timeDiff > 1 && !videoElement.seeking) {
+        console.log('⏩ Seeking direct video to:', currentTime);
+        videoElement.currentTime = currentTime;
+        lastDirectTime = currentTime;
+      }
+      
+      // Sync play/pause state
+      if (isPlaying && isPaused) {
+        console.log('▶️ Starting direct video playback');
+        videoElement.play().catch(e => {
+          console.log('Autoplay prevented:', e);
+        });
+      } else if (!isPlaying && !isPaused) {
+        console.log('⏸️ Pausing direct video playback');
+        videoElement.pause();
+      }
+    } catch (e) {
+      console.log('Sync error:', e);
+    }
+  }
+
+  // ==================== EFFECTS ====================
+
+  // YouTube video URL changed
   $effect(() => {
     if (videoUrl && videoType === 'youtube') {
-      console.log('🔄 Video URL changed, initializing player');
+      console.log('🔄 Video URL changed, initializing YouTube player');
       isYouTubeReady = false;
       initYouTubePlayer();
     }
   });
 
+  // Direct video URL changed
   $effect(() => {
-    if (playerStore.isSyncing && isYouTubeReady) {
-      syncYouTubePlayer();
+    if (videoUrl && videoType === 'direct') {
+      console.log('🔄 Video URL changed, initializing direct video');
+      isDirectVideoReady = false;
+      initDirectVideo();
     }
   });
 
-  // Direct video handling
+  // Sync when isSyncing changes
   $effect(() => {
-    if (videoElement && videoUrl && videoType === 'direct') {
-      videoElement.src = videoUrl;
-    }
-  });
-
-  $effect(() => {
-    if (videoType === 'direct' && videoElement) {
-      const handleLoadedMetadata = () => {
-        if (playerStore.isSyncing && Math.abs(videoElement!.currentTime - currentTime) > 0.5) {
-          videoElement!.currentTime = currentTime;
-          if (isPlaying) {
-            videoElement!.play().catch(e => console.log('Autoplay prevented:', e));
-          }
-        }
-      };
-
-      videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
-
-      if (!playerStore.isSyncing) {
-        const interval = setInterval(() => {
-          if (videoElement && isPlaying) {
-            playerStore.currentTime = videoElement.currentTime;
-          }
-        }, 500);
-        
-        return () => {
-          clearInterval(interval);
-          videoElement?.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        };
+    if (playerStore.isSyncing) {
+      if (videoType === 'youtube' && isYouTubeReady) {
+        syncYouTubePlayer();
+      } else if (videoType === 'direct' && isDirectVideoReady) {
+        syncDirectVideo();
       }
-
-      return () => {
-        videoElement?.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      };
     }
   });
+
+  // Direct video event handlers
+  function handleDirectVideoLoadedMetadata() {
+    if (!videoElement) return;
+    
+    console.log('✅ Direct video metadata loaded');
+    isVideoLoading = false;
+    isDirectVideoReady = true;
+    lastDirectTime = currentTime;
+    
+    playerStore.duration = videoElement.duration;
+    
+    // Initial sync
+    setTimeout(() => {
+      syncDirectVideo();
+      startDirectVideoMonitoring();
+    }, 100);
+  }
+
+  function handleDirectVideoPlay() {
+    if (playerStore.isSyncing || !isDirectVideoReady) return;
+    
+    if (!isPlaying && videoElement) {
+      const videoTime = videoElement.currentTime;
+      playerStore.currentTime = videoTime;
+      lastDirectTime = videoTime;
+      playerStore.play();
+    }
+  }
+
+  function handleDirectVideoPause() {
+    if (playerStore.isSyncing || !isDirectVideoReady) return;
+    
+    if (isPlaying && videoElement) {
+      const videoTime = videoElement.currentTime;
+      playerStore.currentTime = videoTime;
+      lastDirectTime = videoTime;
+      playerStore.pause();
+    }
+  }
+
+  function handleDirectVideoSeeked() {
+    if (playerStore.isSyncing || !isDirectVideoReady || !videoElement) return;
+    
+    const videoTime = videoElement.currentTime;
+    const timeDiff = Math.abs(videoTime - lastDirectTime);
+    
+    // Only report significant seeks
+    if (timeDiff > 2) {
+      playerStore.seek(videoTime);
+      lastDirectTime = videoTime;
+    }
+  }
+
+  function handleDirectVideoWaiting() {
+    isVideoLoading = true;
+  }
+
+  function handleDirectVideoCanPlay() {
+    isVideoLoading = false;
+  }
+
+  function handleDirectVideoError(e: Event) {
+    console.error('❌ Direct video error:', e);
+    isVideoLoading = false;
+    alert('Failed to load video. Please check:\n\n• The URL is correct\n• The file is publicly accessible\n• Your internet connection is stable\n\nTry using YouTube or Dropbox for better reliability.');
+  }
 </script>
 
 <div 
@@ -303,8 +424,10 @@
 >
   {#if !videoUrl}
     <div class="absolute inset-0 flex items-center justify-center text-white/60">
-      <div class="text-center">
-        <p>No video loaded. Add a video URL below to start watching.</p>
+      <div class="text-center space-y-2">
+        <Video class="w-16 h-16 mx-auto opacity-30" />
+        <p class="text-lg">No video loaded</p>
+        <p class="text-sm">Add a video URL below to start watching together</p>
       </div>
     </div>
   {:else if videoType === 'youtube'}
@@ -312,7 +435,7 @@
     
     <button
       onclick={toggleFullscreen}
-      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-100 opacity-100 pointer-events-auto"
+      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-50 opacity-100 pointer-events-auto"
       title="Toggle Fullscreen"
       aria-label="Toggle Fullscreen"
     >
@@ -322,66 +445,37 @@
         <Maximize class="w-5 h-5" />
       {/if}
     </button>
-  {:else if isGoogleDrive}
-    <!-- Google Drive Embed Player -->
-    <iframe
-      src={videoUrl}
-      class="w-full h-full"
-      allow="autoplay"
-      allowfullscreen
-      title="Video player"
-    ></iframe>
-    
-    <button
-      onclick={toggleFullscreen}
-      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-100 opacity-100 pointer-events-auto"
-      title="Toggle Fullscreen"
-      aria-label="Toggle Fullscreen"
-    >
-      {#if isFullscreen}
-        <Minimize class="w-5 h-5" />
-      {:else}
-        <Maximize class="w-5 h-5" />
-      {/if}
-    </button>
-
-    <!-- Note: Google Drive embeds have their own controls -->
-    <div class="absolute bottom-4 left-4 bg-black/80 text-white/80 text-xs px-3 py-2 rounded-lg backdrop-blur-sm">
-      ℹ️ Use Google Drive's built-in controls. Sync may not work with Drive videos.
-    </div>
   {:else}
-    <!-- Regular Direct Video -->
+    <!-- Direct Video Player -->
     <video
       bind:this={videoElement}
       class="w-full h-full"
       controls
-      onloadedmetadata={() => {
-        if (videoElement) {
-          playerStore.duration = videoElement.duration;
-        }
-      }}
-      onplay={() => {
-        if (!playerStore.isSyncing && !isPlaying) {
-          playerStore.play();
-        }
-      }}
-      onpause={() => {
-        if (!playerStore.isSyncing && isPlaying) {
-          playerStore.pause();
-        }
-      }}
-      onseeked={() => {
-        if (!playerStore.isSyncing && videoElement) {
-          playerStore.seek(videoElement.currentTime);
-        }
-      }}
+      preload="metadata"
+      onloadedmetadata={handleDirectVideoLoadedMetadata}
+      onplay={handleDirectVideoPlay}
+      onpause={handleDirectVideoPause}
+      onseeked={handleDirectVideoSeeked}
+      onwaiting={handleDirectVideoWaiting}
+      oncanplay={handleDirectVideoCanPlay}
+      onerror={handleDirectVideoError}
     >
       <track kind="captions" />
     </video>
     
+    <!-- Loading indicator -->
+    {#if isVideoLoading}
+      <div class="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="text-center text-white">
+          <Loader class="w-12 h-12 mx-auto mb-2 animate-spin" />
+          <p>Loading video...</p>
+        </div>
+      </div>
+    {/if}
+    
     <button
       onclick={toggleFullscreen}
-      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-100 opacity-100 pointer-events-auto"
+      class="absolute top-4 right-4 bg-black/60 hover:bg-black/80 backdrop-blur-sm text-white p-3 rounded-lg transition z-50 opacity-100 pointer-events-auto"
       title="Toggle Fullscreen"
       aria-label="Toggle Fullscreen"
     >

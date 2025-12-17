@@ -1,9 +1,10 @@
 <script lang="ts">
   import { playerStore } from '$lib/stores/player.svelte';
-  import { Youtube, Link } from 'lucide-svelte';
+  import { Youtube, Link, Info } from 'lucide-svelte';
 
   let videoUrl = $state('');
   let videoType = $state<'youtube' | 'direct'>('youtube');
+  let showHelp = $state(false);
 
   function extractYouTubeId(url: string): string | null {
     url = url.trim();
@@ -20,13 +21,25 @@
     for (const pattern of patterns) {
       const match = url.match(pattern);
       if (match && match[1]) {
-        console.log('Extracted YouTube ID:', match[1]);
+        console.log('✅ Extracted YouTube ID:', match[1]);
         return match[1];
       }
     }
     
-    console.error('Could not extract YouTube ID from:', url);
+    console.error('❌ Could not extract YouTube ID from:', url);
     return null;
+  }
+
+  function processDropboxUrl(url: string): string {
+    // Convert Dropbox sharing link to direct download link
+    // www.dropbox.com/... → dl.dropboxusercontent.com/...
+    let processed = url.replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+    
+    // Remove ?dl=0 if present and add ?raw=1
+    processed = processed.replace(/\?dl=0/, '');
+    processed = processed.includes('?') ? `${processed}&raw=1` : `${processed}?raw=1`;
+    
+    return processed;
   }
 
   async function handleLoadVideo() {
@@ -38,38 +51,55 @@
     let processedUrl = videoUrl.trim();
     let detectedType: typeof videoType = 'direct';
     
+    // YouTube URLs
     if (processedUrl.includes('youtube.com') || processedUrl.includes('youtu.be')) {
       detectedType = 'youtube';
       
       const videoId = extractYouTubeId(processedUrl);
       if (!videoId) {
-        alert('Invalid YouTube URL. Please use a URL like: https://www.youtube.com/watch?v=VIDEO_ID');
+        alert('❌ Invalid YouTube URL\n\nPlease use a URL like:\nhttps://www.youtube.com/watch?v=VIDEO_ID');
         return;
       }
       
       processedUrl = `https://www.youtube.com/watch?v=${videoId}`;
       console.log('✅ Processed YouTube URL:', processedUrl);
-      
-    } else {
+    }
+    // Google Drive - NOT SUPPORTED
+    else if (processedUrl.includes('drive.google.com')) {
+      alert('❌ Google Drive is not supported\n\nGoogle Drive blocks video streaming for shared files.\n\nPlease use one of these instead:\n\n✅ YouTube (upload as unlisted)\n✅ Dropbox (share link)\n✅ Direct .mp4/.webm URL\n✅ Vimeo, Cloudinary, or other video CDN');
+      return;
+    }
+    // Dropbox URLs
+    else if (processedUrl.includes('dropbox.com')) {
+      detectedType = 'direct';
+      processedUrl = processDropboxUrl(processedUrl);
+      console.log('✅ Converted Dropbox URL:', processedUrl);
+    }
+    // Direct URLs
+    else {
       detectedType = 'direct';
       
-      // Handle Google Drive links
-      if (processedUrl.includes('drive.google.com')) {
-        const fileIdMatch = processedUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-        const idMatch = processedUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      // Add https:// if missing
+      if (!processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
+        processedUrl = 'https://' + processedUrl;
+      }
+      
+      // Validate that it's a video file
+      const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv', '.m4v'];
+      const hasVideoExtension = videoExtensions.some(ext => 
+        processedUrl.toLowerCase().includes(ext)
+      );
+      
+      if (!hasVideoExtension && !processedUrl.includes('cloudinary') && !processedUrl.includes('vimeo')) {
+        const confirmLoad = confirm(
+          '⚠️ This URL doesn\'t look like a video file\n\n' +
+          'Video files usually end with: .mp4, .webm, .ogg\n\n' +
+          'Do you want to try loading it anyway?'
+        );
         
-        const fileId = fileIdMatch?.[1] || idMatch?.[1];
-        
-        if (fileId) {
-          // Use the preview URL which works better for video streaming
-          processedUrl = `https://drive.google.com/file/d/${fileId}/preview`;
-          console.log('✅ Converted Google Drive URL:', processedUrl);
-        } else {
-          alert('Invalid Google Drive URL. Please use a share link.');
+        if (!confirmLoad) {
           return;
         }
-      } else if (!processedUrl.startsWith('http://') && !processedUrl.startsWith('https://')) {
-        processedUrl = 'https://' + processedUrl;
       }
       
       console.log('✅ Processed Direct URL:', processedUrl);
@@ -81,15 +111,44 @@
       
       console.log('✅ Video loaded successfully');
       videoUrl = '';
+      showHelp = false;
     } catch (error) {
       console.error('❌ Failed to load video:', error);
-      alert('Failed to load video. Please try again.');
+      alert('Failed to load video. Please try again or use a different URL.');
     }
   }
 </script>
 
 <div class="bg-surface border border-border rounded-xl p-6">
-  <h3 class="text-text-primary font-semibold text-lg mb-4">Load Video</h3>
+  <div class="flex items-center justify-between mb-4">
+    <h3 class="text-text-primary font-semibold text-lg">Load Video</h3>
+    <button
+      onclick={() => showHelp = !showHelp}
+      class="text-text-secondary hover:text-text-primary transition p-1"
+      title="Show help"
+    >
+      <Info class="w-5 h-5" />
+    </button>
+  </div>
+
+  {#if showHelp}
+    <div class="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm space-y-2">
+      <div class="font-semibold text-blue-400">✅ Supported Platforms:</div>
+      <div class="space-y-1 text-text-secondary">
+        <div><strong class="text-text-primary">YouTube:</strong> Paste any YouTube URL</div>
+        <div><strong class="text-text-primary">Dropbox:</strong> Share link (auto-converted to direct stream)</div>
+        <div><strong class="text-text-primary">Direct Links:</strong> Any .mp4, .webm, .ogg file URL</div>
+        <div><strong class="text-text-primary">CDNs:</strong> Cloudinary, Vimeo, or other video hosting</div>
+      </div>
+      
+      <div class="mt-3 pt-3 border-t border-blue-500/20">
+        <div class="font-semibold text-red-400">❌ Not Supported:</div>
+        <div class="text-text-secondary">
+          <strong class="text-text-primary">Google Drive</strong> - Blocks video streaming. Upload to YouTube instead (as unlisted).
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <div class="space-y-4">
     <div class="flex gap-2">
@@ -125,8 +184,9 @@
         type="text"
         bind:value={videoUrl}
         placeholder={
-          videoType === 'youtube' ? 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' :
-          'https://example.com/video.mp4'
+          videoType === 'youtube' 
+            ? 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' 
+            : 'https://www.dropbox.com/s/abc123/video.mp4 or direct .mp4 URL'
         }
         class="w-full bg-input border border-border rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:border-primary"
         onkeydown={(e) => e.key === 'Enter' && handleLoadVideo()}
@@ -141,17 +201,38 @@
       </button>
     </div>
 
-    <div class="text-xs text-text-muted space-y-1">
+    <div class="text-xs text-text-muted space-y-2">
       {#if videoType === 'youtube'}
-        <p>✓ Full URL: https://www.youtube.com/watch?v=VIDEO_ID</p>
-        <p>✓ Short URL: https://youtu.be/VIDEO_ID</p>
-        <p>✓ Just the ID: VIDEO_ID (11 characters)</p>
-        <p class="mt-2 text-text-secondary">Note: Use YouTube's native controls for quality & settings</p>
+        <div class="space-y-1">
+          <p class="text-text-primary font-medium">YouTube Examples:</p>
+          <p>✓ https://www.youtube.com/watch?v=VIDEO_ID</p>
+          <p>✓ https://youtu.be/VIDEO_ID</p>
+          <p>✓ Just the ID: VIDEO_ID</p>
+        </div>
+        <div class="mt-2 p-2 bg-green-500/10 border border-green-500/20 rounded text-green-400">
+          ⚡ Best sync performance with full controls
+        </div>
       {:else}
-        <p>• Direct links to video files (.mp4, .webm, .ogg)</p>
-        <p>• Must be publicly accessible (no login required)</p>
-        <p>• Google Drive: Use share link (will be auto-converted)</p>
-        <p class="mt-2 text-text-secondary">Note: For Google Drive, make sure sharing is set to "Anyone with the link"</p>
+        <div class="space-y-1">
+          <p class="text-text-primary font-medium">Direct Link Examples:</p>
+          <p>✓ Dropbox: https://www.dropbox.com/s/.../video.mp4</p>
+          <p>✓ Direct URL: https://example.com/video.mp4</p>
+          <p>✓ Supported formats: .mp4, .webm, .ogg, .mov</p>
+        </div>
+        
+        <div class="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded text-blue-400">
+          <p class="font-semibold">💡 Dropbox Tips:</p>
+          <p class="mt-1">1. Share your video file in Dropbox</p>
+          <p>2. Copy the share link</p>
+          <p>3. Paste it here - we'll auto-convert it!</p>
+        </div>
+
+        <div class="mt-2 p-2 bg-orange-500/10 border border-orange-500/20 rounded text-orange-400">
+          <p class="font-semibold">⚠️ Important:</p>
+          <p class="mt-1">• File must be publicly accessible</p>
+          <p>• Sync quality depends on file hosting</p>
+          <p>• Large files may buffer more</p>
+        </div>
       {/if}
     </div>
   </div>
