@@ -176,7 +176,7 @@
 	<div class="mb-12 grid gap-4 sm:grid-cols-2">
 		<button
 			onclick={() => (showCreateModal = true)}
-			class="bg-linear-to-br from-purple-500 to-pink-500 flex transform items-center justify-center gap-3 rounded-xl p-6 text-white transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
+			class="bg-primary flex transform items-center justify-center gap-3 rounded-xl p-6 text-white transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
 		>
 			<Plus class="h-6 w-6" />
 			<span class="text-lg font-semibold">Create New Room</span>
@@ -196,7 +196,7 @@
 				<button
 					onclick={joinRoom}
 					disabled={isJoining || !joinRoomId.trim()}
-					class="bg-linear-to-r from-purple-500 to-pink-500 rounded-lg px-4 sm:px-6 py-2 text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm sm:text-base"
+					class="bg-primary rounded-lg px-4 sm:px-6 py-2 text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm sm:text-base"
 				>
 					{#if isJoining}
 						<Loader class="h-4 w-4 animate-spin" />
@@ -299,7 +299,7 @@
 				<button
 					onclick={createRoom}
 					disabled={isCreating || !newRoomName.trim()}
-					class="bg-linear-to-r from-purple-500 to-pink-500 flex-1 rounded-lg px-4 py-3 text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+					class="bg-primary flex-1 rounded-lg px-4 py-3 text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
 				>
 					{#if isCreating}
 						<Loader class="h-4 w-4 animate-spin" />

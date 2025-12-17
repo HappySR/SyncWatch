@@ -39,7 +39,7 @@
 	<div class="rounded-2xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur-sm">
 		<div class="mb-8 text-center">
 			<div
-				class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-purple-500 to-pink-500 shadow-2xl shadow-purple-500/50"
+				class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-2xl shadow-purple-500/50"
 			>
 				<Video class="h-8 w-8 text-white" />
 			</div>
@@ -115,7 +115,7 @@
 				<button
 					type="submit"
 					disabled={loading || !roomName.trim()}
-					class="bg-linear-to-r from-purple-500 to-pink-500 flex-1 rounded-lg px-6 py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+					class="bg-primary flex-1 rounded-lg px-6 py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
 				>
 					{#if loading}
 						<Loader class="h-5 w-5 animate-spin" />

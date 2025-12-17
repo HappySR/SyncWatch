@@ -31,14 +31,14 @@
 		<!-- Hero Section -->
 		<div class="space-y-6">
 			<div class="flex justify-center">
-				<div class="bg-linear-to-br from-purple-500 to-pink-500 rounded-2xl p-4 shadow-2xl shadow-purple-500/50 animate-pulse-slow">
+				<div class="bg-primary rounded-2xl p-4 shadow-2xl shadow-purple-500/50 animate-pulse-slow">
 					<Play class="h-12 w-12 md:h-16 md:w-16 text-white" fill="white" />
 				</div>
 			</div>
 
 			<h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight">
 				Watch
-				<span class="bg-linear-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate-gradient">
+				<span class="bg-primary bg-clip-text text-transparent animate-gradient">
 					Together
 				</span>
 			</h1>
