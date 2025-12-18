@@ -59,7 +59,7 @@
 		}, 1000);
 	}
 
-	// Auto-scroll when new messages arrive (only if user is near bottom)
+	// Auto-scroll when new messages arrive (using $effect)
 	$effect(() => {
 		if (messages.length > 0 && containerRef && !isUserScrolling) {
 			const { scrollTop, scrollHeight, clientHeight } = containerRef;
@@ -88,25 +88,27 @@
 	});
 </script>
 
-<div class="relative flex-1">
-	<div bind:this={containerRef} class="h-full flex-1 space-y-3 overflow-y-auto scroll-smooth p-4">
+<div class="relative h-full">
+	<div class="h-full space-y-3 p-4">
 		{#if messages.length === 0}
-			<div class="text-text-muted py-8 text-center text-sm">
-				<svg
-					class="mx-auto mb-3 h-12 w-12 opacity-30"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-					/>
-				</svg>
-				<p>No messages yet.</p>
-				<p class="mt-1 text-xs">Start the conversation!</p>
+			<div class="text-text-muted flex h-full items-center justify-center py-8 text-center text-sm">
+				<div>
+					<svg
+						class="mx-auto mb-3 h-12 w-12 opacity-30"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+						/>
+					</svg>
+					<p>No messages yet.</p>
+					<p class="mt-1 text-xs">Start the conversation!</p>
+				</div>
 			</div>
 		{:else}
 			{#each messages as message (message.id)}
@@ -141,7 +143,7 @@
 							</span>
 						</div>
 						<div
-							class="wrap-break-words rounded-lg px-3 py-2 text-sm transition-all hover:shadow-md {isOwnMessage
+							class="wrap-break-words wrap-break-words rounded-lg px-3 py-2 text-sm transition-all hover:shadow-md {isOwnMessage
 								? 'bg-primary rounded-br-none text-white'
 								: 'bg-surface-hover text-text-primary rounded-bl-none'}"
 						>
@@ -180,23 +182,5 @@
 
 	.animate-in {
 		animation: slide-in-from-bottom 0.3s ease-out;
-	}
-
-	/* Custom scrollbar */
-	div::-webkit-scrollbar {
-		width: 6px;
-	}
-
-	div::-webkit-scrollbar-track {
-		background: transparent;
-	}
-
-	div::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 3px;
-	}
-
-	div::-webkit-scrollbar-thumb:hover {
-		background: rgba(255, 255, 255, 0.2);
 	}
 </style>

@@ -61,7 +61,6 @@
 
 		if (data) {
 			messages = data as ChatMessage[];
-			setTimeout(scrollToBottom, 100);
 		}
 	}
 
@@ -92,7 +91,6 @@
 					}
 
 					messages = [...messages, newMsg];
-					setTimeout(scrollToBottom, 50);
 				}
 			)
 			.subscribe();
@@ -122,15 +120,6 @@
 			newMessage = messageToSend;
 		} finally {
 			isSending = false;
-		}
-	}
-
-	function scrollToBottom() {
-		if (chatContainer) {
-			chatContainer.scrollTo({
-				top: chatContainer.scrollHeight,
-				behavior: 'smooth'
-			});
 		}
 	}
 
@@ -183,8 +172,7 @@
 <!-- Regular Chat Panel (Non-Fullscreen) -->
 {#if !isFullscreen}
 	<div
-		class="bg-surface border-border flex flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
-		style="height: 100%;"
+		class="bg-surface border-border flex h-full flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
 	>
 		<!-- Video Call Section -->
 		<div class="border-border bg-surface-hover/50 shrink-0 border-b p-4">
@@ -199,35 +187,12 @@
 			</p>
 		</div>
 
-		<!-- Chat Messages - Fixed height with scroll -->
+		<!-- Chat Messages - Scrollable container -->
 		<div 
-			class="relative overflow-y-auto" 
-			style="min-height: 800px; max-height: 1200px; height: 800px;"
 			bind:this={chatContainer}
+			class="relative flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
 		>
 			<ChatMessages {messages} containerRef={chatContainer} />
-
-			<!-- Scroll to bottom indicator -->
-			{#if messages.length > 5}
-				<div
-					class="absolute right-2 bottom-2 opacity-0 transition-opacity duration-200 hover:opacity-100"
-				>
-					<button
-						onclick={scrollToBottom}
-						class="bg-primary/90 hover:bg-primary rounded-full p-2 text-white shadow-lg transition-all hover:scale-110"
-						title="Scroll to bottom"
-					>
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M19 14l-7 7m0 0l-7-7m7 7V3"
-							/>
-						</svg>
-					</button>
-				</div>
-			{/if}
 		</div>
 
 		<!-- Message Input -->

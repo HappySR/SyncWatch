@@ -56,19 +56,27 @@ class RoomStore {
 	async joinRoom(roomId: string) {
 		if (!authStore.user) throw new Error('Not authenticated');
 
+		// Clear any existing state first
+		if (this.joinTimeout) {
+			clearTimeout(this.joinTimeout);
+			this.joinTimeout = null;
+		}
+
 		this.loading = true;
 		this.error = null;
 
+		console.log('🚀 Starting join room process for:', roomId);
+
 		this.joinTimeout = setTimeout(() => {
 			if (this.loading) {
+				console.error('⏱️ Join room timeout reached');
 				this.error = 'Join room timeout. Please try again.';
 				this.loading = false;
-				throw new Error('Join room timeout');
 			}
 		}, 15000);
 
 		try {
-			console.log('Attempting to join room:', roomId);
+			console.log('1️⃣ Checking if room exists...');
 
 			const { data: roomExists, error: roomCheckError } = await supabase
 				.from('rooms')
@@ -84,6 +92,8 @@ class RoomStore {
 				throw new Error('This room is private');
 			}
 
+			console.log('2️⃣ Room exists, checking membership...');
+
 			const { data: existingMember } = await supabase
 				.from('room_members')
 				.select('id')
@@ -92,12 +102,18 @@ class RoomStore {
 				.maybeSingle();
 
 			if (existingMember) {
-				console.log('Already a member, loading room...');
+				console.log('3️⃣ Already a member, loading room...');
 				await this.loadRoom(roomId);
 				this.subscribeToRoom(roomId);
 				this.startPresenceTracking(roomId);
+				
+				clearTimeout(this.joinTimeout);
+				this.loading = false;
+				console.log('✅ Successfully rejoined existing room');
 				return;
 			}
+
+			console.log('4️⃣ Not a member, inserting new membership...');
 
 			const { data, error } = await supabase
 				.from('room_members')
@@ -111,23 +127,30 @@ class RoomStore {
 				.single();
 
 			if (error) {
+				console.error('❌ Insert error:', error);
 				if (error.message?.includes('row-level security')) {
 					throw new Error('Permission denied. You may not have access to this room.');
 				}
 				throw error;
 			}
 
+			console.log('5️⃣ Membership created, loading room data...');
+
 			await this.loadRoom(roomId);
+			
+			console.log('6️⃣ Setting up subscriptions...');
 			this.subscribeToRoom(roomId);
 			this.startPresenceTracking(roomId);
 
-			console.log('Successfully joined room');
-		} catch (err: any) {
-			this.error = err.message;
-			throw err;
-		} finally {
 			clearTimeout(this.joinTimeout);
 			this.loading = false;
+			console.log('✅ Successfully joined new room');
+		} catch (err: any) {
+			console.error('❌ Join room failed:', err);
+			this.error = err.message;
+			clearTimeout(this.joinTimeout);
+			this.loading = false;
+			throw err;
 		}
 	}
 

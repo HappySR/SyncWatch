@@ -98,9 +98,15 @@
 			return;
 		}
 
-		if (isJoining) return;
+		// Prevent multiple simultaneous requests, but allow retry
+		if (isJoining) {
+			console.log('Join already in progress, ignoring duplicate request');
+			return;
+		}
 
 		isJoining = true;
+		console.log('🚀 Starting join room from dashboard:', trimmedId);
+
 		try {
 			// First check if room exists
 			const { data: room, error: roomError } = await supabase
@@ -110,6 +116,7 @@
 				.single();
 
 			if (roomError || !room) {
+				console.error('❌ Room not found:', roomError);
 				alert('Room not found. Please check the room ID and try again.');
 				return;
 			}
@@ -119,20 +126,32 @@
 				return;
 			}
 
-			// Try to join the room
-			await roomStore.joinRoom(trimmedId);
+			console.log('✅ Room found, attempting to join...');
+
+			// Try to join the room with timeout
+			const joinPromise = roomStore.joinRoom(trimmedId);
+			const timeoutPromise = new Promise((_, reject) => {
+				setTimeout(() => reject(new Error('Join timeout after 20 seconds')), 20000);
+			});
+
+			await Promise.race([joinPromise, timeoutPromise]);
+
+			console.log('✅ Join successful, navigating to room...');
 
 			// Small delay to ensure state is updated
 			await new Promise((resolve) => setTimeout(resolve, 300));
 
+			// Clear input and navigate
 			joinRoomId = '';
 			goto(`/room/${trimmedId}`);
 		} catch (error: any) {
-			console.error('Join room error:', error);
+			console.error('❌ Join room error:', error);
 
 			// Better error messages
 			let errorMessage = 'Failed to join room. ';
-			if (error.message?.includes('row-level security')) {
+			if (error.message?.includes('timeout')) {
+				errorMessage += 'Connection timed out. Please check your internet and try again.';
+			} else if (error.message?.includes('row-level security')) {
 				errorMessage += 'You may not have permission to join this room.';
 			} else if (error.message) {
 				errorMessage += error.message;
@@ -142,6 +161,8 @@
 
 			alert(errorMessage);
 		} finally {
+			// ALWAYS reset the joining state, even on error
+			console.log('🔄 Resetting join state');
 			isJoining = false;
 		}
 	}
@@ -212,6 +233,11 @@
 					{/if}
 				</button>
 			</div>
+			{#if isJoining}
+				<div class="mt-2 text-xs text-yellow-400">
+					Connecting to room... This may take up to 20 seconds.
+				</div>
+			{/if}
 		</div>
 	</div>
 

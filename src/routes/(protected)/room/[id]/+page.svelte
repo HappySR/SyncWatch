@@ -25,46 +25,75 @@
 			return;
 		}
 
-		try {
-			console.log('=== JOINING ROOM ===');
-			console.log('Room ID:', roomId);
+		let retryCount = 0;
+		const maxRetries = 3;
 
-			await roomStore.joinRoom(roomId);
-			console.log('Room joined successfully');
+		async function attemptJoinRoom() {
+			try {
+				console.log(`=== JOINING ROOM (Attempt ${retryCount + 1}/${maxRetries}) ===`);
+				console.log('Room ID:', roomId);
 
-			// Wait a bit to ensure room data is fully loaded
-			await new Promise((resolve) => setTimeout(resolve, 500));
+				// Create a timeout promise
+				const timeoutPromise = new Promise((_, reject) => {
+					setTimeout(() => reject(new Error('Connection timeout after 20 seconds')), 20000);
+				});
 
-			console.log('Current room:', roomStore.currentRoom);
-			console.log('Current members:', roomStore.members);
-			console.log('Current user:', authStore.user?.id);
+				// Race between join room and timeout
+				await Promise.race([
+					roomStore.joinRoom(roomId),
+					timeoutPromise
+				]);
 
-			// Find current user's member record
-			const myMember = roomStore.members.find((m) => m.user_id === authStore.user?.id);
-			console.log('My member record:', myMember);
-			console.log('Has controls:', myMember?.has_controls);
+				console.log('Room joined successfully');
 
-			console.log('=== SYNCING PLAYER ===');
-			await playerStore.syncWithRoom();
-			console.log('Player synced with room');
-			console.log('Player state after sync:', {
-				videoUrl: playerStore.videoUrl,
-				videoType: playerStore.videoType,
-				currentTime: playerStore.currentTime,
-				isPlaying: playerStore.isPlaying
-			});
+				// Wait a bit to ensure room data is fully loaded
+				await new Promise((resolve) => setTimeout(resolve, 500));
 
-			loading = false;
-		} catch (error: any) {
-			console.error('Failed to join room:', error);
-			loading = false;
+				console.log('Current room:', roomStore.currentRoom);
+				console.log('Current members:', roomStore.members);
+				console.log('Current user:', authStore.user?.id);
 
-			// Show user-friendly error
-			setTimeout(() => {
-				alert(`Failed to join room: ${error.message || 'Unknown error'}. Returning to dashboard.`);
-				goto('/dashboard');
-			}, 100);
+				// Find current user's member record
+				const myMember = roomStore.members.find((m) => m.user_id === authStore.user?.id);
+				console.log('My member record:', myMember);
+				console.log('Has controls:', myMember?.has_controls);
+
+				console.log('=== SYNCING PLAYER ===');
+				await playerStore.syncWithRoom();
+				console.log('Player synced with room');
+				console.log('Player state after sync:', {
+					videoUrl: playerStore.videoUrl,
+					videoType: playerStore.videoType,
+					currentTime: playerStore.currentTime,
+					isPlaying: playerStore.isPlaying
+				});
+
+				loading = false;
+			} catch (error: any) {
+				console.error(`Failed to join room (Attempt ${retryCount + 1}):`, error);
+
+				retryCount++;
+
+				if (retryCount < maxRetries) {
+					console.log(`Retrying in 2 seconds... (${retryCount}/${maxRetries})`);
+					error = `Connection timeout. Retrying... (${retryCount}/${maxRetries})`;
+					
+					await new Promise(resolve => setTimeout(resolve, 2000));
+					return attemptJoinRoom();
+				} else {
+					loading = false;
+					error = error.message || 'Failed to join room after multiple attempts';
+
+					// Show user-friendly error
+					setTimeout(() => {
+						alert(`Failed to join room after ${maxRetries} attempts: ${error.message || 'Unknown error'}. Returning to dashboard.`);
+						goto('/dashboard');
+					}, 100);
+				}
+			}
 		}
+
+		await attemptJoinRoom();
 	});
 
 	onDestroy(() => {
@@ -119,17 +148,17 @@
 			{/if}
 		</div>
 
-		<div class="grid gap-6 lg:grid-cols-[1fr_320px]">
+		<div class="grid gap-6 lg:grid-cols-[1fr_400px]">
 			<div class="space-y-6">
 				<VideoPlayer onFullscreenChange={handleFullscreenChange} />
 
 				<RoomControls />
 			</div>
 
-			<div class="space-y-6">
+			<div class="flex flex-col gap-6" style="height: calc(100vh - 140px); min-height: 1400px;">
 				<UserList {isHost} />
 
-				<div style="height: calc(100vh - 200px); min-height: 600px;">
+				<div class="flex-1 overflow-hidden">
 					<ChatPanel isFullscreen={isVideoFullscreen} />
 				</div>
 			</div>
