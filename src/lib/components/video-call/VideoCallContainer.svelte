@@ -286,14 +286,14 @@
 
 	async function toggleMute() {
 		if (!localAudioTrack) return;
-		await localAudioTrack.setEnabled(!isMuted);
 		isMuted = !isMuted;
+		await localAudioTrack.setEnabled(!isMuted);
 	}
 
 	async function toggleVideo() {
 		if (!localVideoTrack) return;
-		await localVideoTrack.setEnabled(!isVideoOff);
 		isVideoOff = !isVideoOff;
+		await localVideoTrack.setEnabled(!isVideoOff);
 	}
 
 	async function toggleScreenShare() {
@@ -409,14 +409,17 @@
 
 	// Auto-expand video call when entering fullscreen
 	$effect(() => {
-		if (isFullscreen && isInCall) {
-			// Save minimized state
-			wasMinimizedBeforeFullscreen = isMinimized;
-			// Always expand when entering fullscreen
-			isMinimized = false;
-		} else if (!isFullscreen && isInCall && wasMinimizedBeforeFullscreen) {
-			// Restore previous minimized state when exiting fullscreen
-			isMinimized = true;
+		if (isInCall) {
+			if (isFullscreen) {
+				// Save minimized state
+				wasMinimizedBeforeFullscreen = isMinimized;
+				// Always expand when entering fullscreen
+				isMinimized = false;
+			} else if (wasMinimizedBeforeFullscreen) {
+				// Restore previous minimized state when exiting fullscreen
+				isMinimized = true;
+				wasMinimizedBeforeFullscreen = false;
+			}
 		}
 	});
 </script>
