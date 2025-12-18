@@ -206,14 +206,14 @@
 			);
 
 
-			// Set default states BEFORE publishing: muted and video off
+			// Publish tracks first (must be enabled to publish)
+			await agoraClient.publish([localAudioTrack, localVideoTrack]);
+
+			// NOW disable them after publishing
 			await localAudioTrack.setEnabled(false);
 			await localVideoTrack.setEnabled(false);
 			isMuted = true;
 			isVideoOff = true;
-
-			// Now publish the disabled tracks
-			await agoraClient.publish([localAudioTrack, localVideoTrack]);
 
 			if (localVideoContainer && localVideoTrack) {
 				localVideoTrack.play(localVideoContainer);
