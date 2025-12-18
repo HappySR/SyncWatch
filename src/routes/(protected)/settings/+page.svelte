@@ -81,14 +81,13 @@
 	</div>
 
 	<!-- Video Call Settings -->
-	<div class="bg-surface border-border mb-6 rounded-xl border p-6 backdrop-blur-sm">
+	<!-- <div class="bg-surface border-border mb-6 rounded-xl border p-6 backdrop-blur-sm">
 		<div class="mb-6 flex items-center gap-3">
 			<MessageSquare class="text-primary h-6 w-6" />
 			<h2 class="text-text-primary text-2xl font-bold">Fullscreen Settings</h2>
 		</div>
 
 		<div class="space-y-6">
-			<!-- Show Chat in Fullscreen -->
 			<div class="flex items-center justify-between">
 				<div class="flex-1">
 					<div class="text-text-primary mb-1 font-medium">Show Chat in Fullscreen</div>
@@ -111,7 +110,6 @@
 				</button>
 			</div>
 
-			<!-- Chat Opacity -->
 			{#if settingsStore.showChatInFullscreen}
 				<div>
 					<div class="mb-2 flex items-center justify-between">
@@ -141,7 +139,7 @@
 				</div>
 			{/if}
 		</div>
-	</div>
+	</div> -->
 
 	<!-- Preview Section -->
 	<div class="bg-surface border-border rounded-xl border p-6 backdrop-blur-sm">
