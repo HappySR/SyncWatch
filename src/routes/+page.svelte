@@ -38,11 +38,6 @@
 				/>
 			</div>
 
-			<h1 class="text-4xl leading-tight font-bold text-white sm:text-5xl md:text-6xl lg:text-7xl">
-				Watch
-				<span class="bg-primary animate-gradient bg-clip-text text-transparent"> Together </span>
-			</h1>
-
 			<p class="mx-auto max-w-2xl px-4 text-base text-white/70 sm:text-lg md:text-xl lg:text-2xl">
 				Experience movies and shows with friends in perfect sync. Zero latency, infinite fun.
 			</p>
@@ -130,11 +125,6 @@
 		}
 	}
 
-	.animate-gradient {
-		background-size: 200% auto;
-		animation: gradient 3s linear infinite;
-	}
-
 	@keyframes pulse-slow {
 		0%,
 		100% {
@@ -146,6 +136,6 @@
 	}
 
 	.animate-pulse-slow {
-		animation: pulse-slow 2s ease-in-out infinite;
+		animation: pulse-slow 3s ease-in-out infinite;
 	}
 </style>

@@ -55,7 +55,7 @@
 	let remoteUsers = $state<Map<string, RemoteUser>>(new Map());
 
 	// UI states - DEFAULT OFF
-	let isMuted = $state(true);
+	let isMuted = $state(false);
 	let isVideoOff = $state(true);
 	let isSharingScreen = $state(false);
 	let showSettings = $state(false);
