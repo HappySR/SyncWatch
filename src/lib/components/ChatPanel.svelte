@@ -200,10 +200,7 @@
 		</div>
 
 		<!-- Chat Messages - Fixed height with scroll -->
-		<div 
-			class="relative overflow-hidden" 
-			style="height: clamp(800px, 100%, 1200px);"
-		>
+		<div class="relative overflow-hidden min-h-200 max-h-400">
 			<ChatMessages {messages} containerRef={chatContainer} />
 
 			<!-- Scroll to bottom indicator -->
