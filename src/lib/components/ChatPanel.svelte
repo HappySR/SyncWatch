@@ -200,7 +200,11 @@
 		</div>
 
 		<!-- Chat Messages - Fixed height with scroll -->
-		<div class="relative overflow-hidden min-h-200 max-h-400">
+		<div 
+			class="relative overflow-y-auto" 
+			style="min-height: 800px; max-height: 1200px; height: 800px;"
+			bind:this={chatContainer}
+		>
 			<ChatMessages {messages} containerRef={chatContainer} />
 
 			<!-- Scroll to bottom indicator -->
@@ -285,30 +289,5 @@
 
 	.animate-fadeIn {
 		animation: fadeIn 0.3s ease-out;
-	}
-
-	/* Custom scrollbar for chat container */
-	div[style*="min-height: 800px;"] > div::-webkit-scrollbar {
-		width: 8px;
-	}
-
-	div[style*="min-height: 800px;"] > div::-webkit-scrollbar-track {
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 4px;
-	}
-
-	div[style*="min-height: 800px;"] > div::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 4px;
-	}
-
-	div[style*="min-height: 800px;"] > div::-webkit-scrollbar-thumb:hover {
-		background: rgba(255, 255, 255, 0.3);
-	}
-
-	/* Firefox */
-	div[style*="min-height: 800px;"] > div {
-		scrollbar-width: thin;
-		scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.05);
 	}
 </style>
