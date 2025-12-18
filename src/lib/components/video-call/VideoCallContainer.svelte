@@ -55,8 +55,9 @@
 	let remoteUsers = $state<Map<string, RemoteUser>>(new Map());
 
 	// UI states - DEFAULT OFF
-	let isMuted = $state(false);
+	let isMuted = $state(true);
 	let isVideoOff = $state(true);
+	let wasMinimizedBeforeFullscreen = $state(false);
 	let isSharingScreen = $state(false);
 	let showSettings = $state(false);
 	let localVideoContainer: HTMLDivElement | undefined = $state(undefined);
@@ -204,17 +205,19 @@
 				}
 			);
 
-			// Set default states: muted and video off
+
+			// Set default states BEFORE publishing: muted and video off
 			await localAudioTrack.setEnabled(false);
 			await localVideoTrack.setEnabled(false);
 			isMuted = true;
 			isVideoOff = true;
 
+			// Now publish the disabled tracks
+			await agoraClient.publish([localAudioTrack, localVideoTrack]);
+
 			if (localVideoContainer && localVideoTrack) {
 				localVideoTrack.play(localVideoContainer);
 			}
-
-			await agoraClient.publish([localAudioTrack, localVideoTrack]);
 
 			if (callChannel) {
 				await callChannel.send({
@@ -403,6 +406,19 @@
 		}
 		expandedVideos = new Set(expandedVideos);
 	}
+
+	// Auto-expand video call when entering fullscreen
+	$effect(() => {
+		if (isFullscreen && isInCall) {
+			// Save minimized state
+			wasMinimizedBeforeFullscreen = isMinimized;
+			// Always expand when entering fullscreen
+			isMinimized = false;
+		} else if (!isFullscreen && isInCall && wasMinimizedBeforeFullscreen) {
+			// Restore previous minimized state when exiting fullscreen
+			isMinimized = true;
+		}
+	});
 </script>
 
 <!-- Incoming Call Notification -->
@@ -425,196 +441,197 @@
 				? 'right: 20px; bottom: 20px; width: auto; height: auto; z-index: 10000;'
 				: 'right: 20px; bottom: 80px; width: 400px; max-height: 80vh; z-index: 10000;'}
 		>
-			{#if !isMinimized}
+			<!-- Video call content - only show if expanded -->
+			<div
+				class="flex flex-col overflow-hidden rounded-xl border-2 border-white/20 bg-black shadow-2xl"
+				style="max-height: 80vh; display: {isMinimized ? 'none' : 'flex'};"
+			>
+				<!-- Header -->
 				<div
-					class="flex flex-col overflow-hidden rounded-xl border-2 border-white/20 bg-black shadow-2xl"
-					style="max-height: 80vh;"
+					class="flex items-center justify-between border-b border-white/10 bg-black/90 px-3 py-2"
 				>
-					<!-- Header -->
-					<div
-						class="flex items-center justify-between border-b border-white/10 bg-black/90 px-3 py-2"
-					>
-						<span class="flex items-center gap-2 text-sm font-medium text-white">
-							<Users class="h-4 w-4" />
-							Video Call ({remoteUsers.size + 1})
-						</span>
-						<div class="flex gap-2">
-							<button
-								onclick={toggleSettings}
-								class="rounded p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
-								title="Settings"
+					<span class="flex items-center gap-2 text-sm font-medium text-white">
+						<Users class="h-4 w-4" />
+						Video Call ({remoteUsers.size + 1})
+					</span>
+					<div class="flex gap-2">
+						<button
+							onclick={toggleSettings}
+							class="rounded p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
+							title="Settings"
+						>
+							<Settings class="h-4 w-4" />
+						</button>
+						<button
+							onclick={toggleMinimize}
+							class="rounded p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
+							title="Minimize"
+						>
+							<Minimize2 class="h-4 w-4" />
+						</button>
+						<button
+							onclick={endCall}
+							class="rounded p-1 text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
+							title="End call"
+						>
+							<X class="h-4 w-4" />
+						</button>
+					</div>
+				</div>
+
+				<!-- Video Grid - Scrollable -->
+				<div class="overflow-y-auto bg-black p-2" style="max-height: calc(80vh - 120px);">
+					<div class="space-y-2">
+						<!-- Local Video -->
+						<div
+							class="relative overflow-hidden rounded-lg bg-gray-900 transition-all"
+							class:expanded={expandedVideos.has('local')}
+							style={expandedVideos.has('local') ? 'height: 400px;' : 'height: 150px;'}
+						>
+							<div bind:this={localVideoContainer} class="h-full w-full"></div>
+							<div
+								class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
 							>
-								<Settings class="h-4 w-4" />
-							</button>
+								You {isVideoOff ? '(Video Off)' : ''}
+							</div>
 							<button
-								onclick={toggleMinimize}
-								class="rounded p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
-								title="Minimize"
+								onclick={() => toggleExpandVideo('local')}
+								class="absolute top-2 right-2 rounded bg-black/60 p-1 text-white/80 transition hover:bg-black/80 hover:text-white"
+								title={expandedVideos.has('local') ? 'Minimize' : 'Maximize'}
 							>
-								<Minimize2 class="h-4 w-4" />
-							</button>
-							<button
-								onclick={endCall}
-								class="rounded p-1 text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
-								title="End call"
-							>
-								<X class="h-4 w-4" />
+								{#if expandedVideos.has('local')}
+									<Minimize2 class="h-3 w-3" />
+								{:else}
+									<Maximize2 class="h-3 w-3" />
+								{/if}
 							</button>
 						</div>
-					</div>
 
-					<!-- Video Grid - Scrollable -->
-					<div class="overflow-y-auto bg-black p-2" style="max-height: calc(80vh - 120px);">
-						<div class="space-y-2">
-							<!-- Local Video -->
+						<!-- Remote Videos -->
+						{#each Array.from(remoteUsers.values()) as user (user.uid)}
 							<div
 								class="relative overflow-hidden rounded-lg bg-gray-900 transition-all"
-								class:expanded={expandedVideos.has('local')}
-								style={expandedVideos.has('local') ? 'height: 400px;' : 'height: 150px;'}
+								class:expanded={expandedVideos.has(user.uid)}
+								style={expandedVideos.has(user.uid) ? 'height: 400px;' : 'height: 150px;'}
 							>
-								<div bind:this={localVideoContainer} class="h-full w-full"></div>
+								<div id="remote-video-{user.uid}" class="h-full w-full"></div>
 								<div
 									class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
 								>
-									You {isVideoOff ? '(Video Off)' : ''}
+									{user.displayName || `User ${user.uid}`}
 								</div>
 								<button
-									onclick={() => toggleExpandVideo('local')}
+									onclick={() => toggleExpandVideo(user.uid)}
 									class="absolute top-2 right-2 rounded bg-black/60 p-1 text-white/80 transition hover:bg-black/80 hover:text-white"
-									title={expandedVideos.has('local') ? 'Minimize' : 'Maximize'}
+									title={expandedVideos.has(user.uid) ? 'Minimize' : 'Maximize'}
 								>
-									{#if expandedVideos.has('local')}
+									{#if expandedVideos.has(user.uid)}
 										<Minimize2 class="h-3 w-3" />
 									{:else}
 										<Maximize2 class="h-3 w-3" />
 									{/if}
 								</button>
 							</div>
-
-							<!-- Remote Videos -->
-							{#each Array.from(remoteUsers.values()) as user (user.uid)}
-								<div
-									class="relative overflow-hidden rounded-lg bg-gray-900 transition-all"
-									class:expanded={expandedVideos.has(user.uid)}
-									style={expandedVideos.has(user.uid) ? 'height: 400px;' : 'height: 150px;'}
-								>
-									<div id="remote-video-{user.uid}" class="h-full w-full"></div>
-									<div
-										class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
-									>
-										{user.displayName || `User ${user.uid}`}
-									</div>
-									<button
-										onclick={() => toggleExpandVideo(user.uid)}
-										class="absolute top-2 right-2 rounded bg-black/60 p-1 text-white/80 transition hover:bg-black/80 hover:text-white"
-										title={expandedVideos.has(user.uid) ? 'Minimize' : 'Maximize'}
-									>
-										{#if expandedVideos.has(user.uid)}
-											<Minimize2 class="h-3 w-3" />
-										{:else}
-											<Maximize2 class="h-3 w-3" />
-										{/if}
-									</button>
-								</div>
-							{/each}
-						</div>
+						{/each}
 					</div>
+				</div>
 
-					<!-- Controls -->
-					<div
-						class="flex items-center justify-center gap-2 border-t border-white/10 bg-black/90 px-4 py-3"
+				<!-- Controls -->
+				<div
+					class="flex items-center justify-center gap-2 border-t border-white/10 bg-black/90 px-4 py-3"
+				>
+					<button
+						onclick={toggleMute}
+						class="rounded-full p-3 transition {isMuted
+							? 'bg-red-500 hover:bg-red-600'
+							: 'bg-white/10 hover:bg-white/20'} text-white"
 					>
-						<button
-							onclick={toggleMute}
-							class="rounded-full p-3 transition {isMuted
-								? 'bg-red-500 hover:bg-red-600'
-								: 'bg-white/10 hover:bg-white/20'} text-white"
-						>
-							{#if isMuted}
-								<MicOff class="h-5 w-5" />
-							{:else}
-								<Mic class="h-5 w-5" />
-							{/if}
-						</button>
+						{#if isMuted}
+							<MicOff class="h-5 w-5" />
+						{:else}
+							<Mic class="h-5 w-5" />
+						{/if}
+					</button>
 
-						<button
-							onclick={toggleVideo}
-							class="rounded-full p-3 transition {isVideoOff
-								? 'bg-red-500 hover:bg-red-600'
-								: 'bg-white/10 hover:bg-white/20'} text-white"
-						>
-							{#if isVideoOff}
-								<VideoOff class="h-5 w-5" />
-							{:else}
-								<Video class="h-5 w-5" />
-							{/if}
-						</button>
+					<button
+						onclick={toggleVideo}
+						class="rounded-full p-3 transition {isVideoOff
+							? 'bg-red-500 hover:bg-red-600'
+							: 'bg-white/10 hover:bg-white/20'} text-white"
+					>
+						{#if isVideoOff}
+							<VideoOff class="h-5 w-5" />
+						{:else}
+							<Video class="h-5 w-5" />
+						{/if}
+					</button>
 
-						<button
-							onclick={toggleScreenShare}
-							class="rounded-full p-3 transition {isSharingScreen
-								? 'bg-primary hover:bg-primary/90'
-								: 'bg-white/10 hover:bg-white/20'} text-white"
-						>
-							{#if isSharingScreen}
-								<MonitorOff class="h-5 w-5" />
-							{:else}
-								<Monitor class="h-5 w-5" />
-							{/if}
-						</button>
-					</div>
+					<button
+						onclick={toggleScreenShare}
+						class="rounded-full p-3 transition {isSharingScreen
+							? 'bg-primary hover:bg-primary/90'
+							: 'bg-white/10 hover:bg-white/20'} text-white"
+					>
+						{#if isSharingScreen}
+							<MonitorOff class="h-5 w-5" />
+						{:else}
+							<Monitor class="h-5 w-5" />
+						{/if}
+					</button>
+				</div>
 
-					<!-- Settings Panel -->
-					{#if showSettings}
-						<div class="absolute inset-0 z-10 flex items-center justify-center bg-black/95 p-4">
-							<div class="w-full max-w-md space-y-4 rounded-xl bg-gray-900 p-6">
-								<div class="mb-4 flex items-center justify-between">
-									<h3 class="font-semibold text-white">Call Settings</h3>
-									<button onclick={toggleSettings} class="text-white/60 hover:text-white">
-										<X class="h-5 w-5" />
-									</button>
-								</div>
+				<!-- Settings Panel -->
+				{#if showSettings}
+					<div class="absolute inset-0 z-10 flex items-center justify-center bg-black/95 p-4">
+						<div class="w-full max-w-md space-y-4 rounded-xl bg-gray-900 p-6">
+							<div class="mb-4 flex items-center justify-between">
+								<h3 class="font-semibold text-white">Call Settings</h3>
+								<button onclick={toggleSettings} class="text-white/60 hover:text-white">
+									<X class="h-5 w-5" />
+								</button>
+							</div>
 
-								<div>
-									<label for="fullscreen-camera" class="mb-2 block text-sm text-white">Camera</label
-									>
-									<select
-										id="fullscreen-camera"
-										bind:value={selectedCamera}
-										onchange={changeCamera}
-										class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
-									>
-										{#each cameras as camera}
-											<option value={camera.deviceId}
-												>{camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}</option
-											>
-										{/each}
-									</select>
-								</div>
+							<div>
+								<label for="fullscreen-camera" class="mb-2 block text-sm text-white">Camera</label
+								>
+								<select
+									id="fullscreen-camera"
+									bind:value={selectedCamera}
+									onchange={changeCamera}
+									class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
+								>
+									{#each cameras as camera}
+										<option value={camera.deviceId}
+											>{camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}</option
+										>
+									{/each}
+								</select>
+							</div>
 
-								<div>
-									<label for="fullscreen-microphone" class="mb-2 block text-sm text-white"
-										>Microphone</label
-									>
-									<select
-										id="fullscreen-microphone"
-										bind:value={selectedMicrophone}
-										onchange={changeMicrophone}
-										class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
-									>
-										{#each microphones as mic}
-											<option value={mic.deviceId}
-												>{mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}</option
-											>
-										{/each}
-									</select>
-								</div>
+							<div>
+								<label for="fullscreen-microphone" class="mb-2 block text-sm text-white"
+									>Microphone</label
+								>
+								<select
+									id="fullscreen-microphone"
+									bind:value={selectedMicrophone}
+									onchange={changeMicrophone}
+									class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
+								>
+									{#each microphones as mic}
+										<option value={mic.deviceId}
+											>{mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}</option
+										>
+									{/each}
+								</select>
 							</div>
 						</div>
-					{/if}
-				</div>
-			{:else}
-				<!-- Minimized Button -->
+					</div>
+				{/if}
+			</div>
+
+			<!-- Minimized Button (only show when actually minimized) -->
+			{#if isMinimized}
 				<button
 					onclick={toggleMinimize}
 					class="flex items-center gap-2 rounded-full border-2 border-white/20 bg-green-500 px-4 py-3 text-white shadow-2xl transition-all hover:scale-110 hover:bg-green-600"
@@ -625,12 +642,10 @@
 				</button>
 			{/if}
 
-			<!-- Hidden local video container when minimized -->
-			{#if isMinimized}
-				<div class="hidden">
-					<div bind:this={localVideoContainer}></div>
-				</div>
-			{/if}
+			<!-- Hidden local video container -->
+			<div class="hidden">
+				<div bind:this={localVideoContainer}></div>
+			</div>
 		</div>
 	{:else}
 		<!-- NON-FULLSCREEN MODE: Normal chat panel view -->
