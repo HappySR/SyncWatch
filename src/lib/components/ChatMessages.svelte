@@ -89,7 +89,7 @@
 </script>
 
 <div class="relative flex-1">
-	<div bind:this={containerRef} class="flex-1 space-y-3 overflow-y-auto scroll-smooth p-4 h-full">
+	<div bind:this={containerRef} class="h-full flex-1 space-y-3 overflow-y-auto scroll-smooth p-4">
 		{#if messages.length === 0}
 			<div class="text-text-muted py-8 text-center text-sm">
 				<svg
@@ -157,7 +157,7 @@
 	{#if showScrollButton}
 		<button
 			onclick={() => scrollToBottom(true)}
-			class="absolute right-4 bottom-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-black shadow-2xl transition-all hover:scale-110 hover:shadow-purple-500/50 active:scale-95"
+			class="bg-primary absolute right-4 bottom-4 z-10 flex h-10 w-10 items-center justify-center rounded-full text-black shadow-2xl transition-all hover:scale-110 hover:shadow-purple-500/50 active:scale-95"
 			title="Scroll to bottom"
 			aria-label="Scroll to bottom"
 		>

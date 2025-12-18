@@ -55,10 +55,12 @@
 
 		const { data, error: fetchError } = await supabase
 			.from('room_members')
-			.select(`
+			.select(
+				`
         room_id,
         rooms (*)
-      `)
+      `
+			)
 			.eq('user_id', authStore.user.id)
 			.throwOnError();
 
@@ -119,7 +121,7 @@
 
 			// Try to join the room
 			await roomStore.joinRoom(trimmedId);
-			
+
 			// Small delay to ensure state is updated
 			await new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -127,7 +129,7 @@
 			goto(`/room/${trimmedId}`);
 		} catch (error: any) {
 			console.error('Join room error:', error);
-			
+
 			// Better error messages
 			let errorMessage = 'Failed to join room. ';
 			if (error.message?.includes('row-level security')) {
@@ -137,7 +139,7 @@
 			} else {
 				errorMessage += 'Please try again.';
 			}
-			
+
 			alert(errorMessage);
 		} finally {
 			isJoining = false;
@@ -155,22 +157,26 @@
 	function retryLoading() {
 		error = null;
 		loading = true;
-		loadRooms().then(() => {
-			loading = false;
-		}).catch((err) => {
-			console.error('Retry failed:', err);
-			error = 'Failed to load rooms. Please try again.';
-			loading = false;
-		});
+		loadRooms()
+			.then(() => {
+				loading = false;
+			})
+			.catch((err) => {
+				console.error('Retry failed:', err);
+				error = 'Failed to load rooms. Please try again.';
+				loading = false;
+			});
 	}
 </script>
 
 <div class="mx-auto max-w-7xl px-4 py-8">
 	<div class="mb-8">
-		<h1 class="mb-2 text-3xl sm:text-4xl font-bold text-white">
+		<h1 class="mb-2 text-3xl font-bold text-white sm:text-4xl">
 			Welcome back, {authStore.profile?.display_name || 'there'}!
 		</h1>
-		<p class="text-white/60 text-sm sm:text-base">Create a room or join one to start watching together</p>
+		<p class="text-sm text-white/60 sm:text-base">
+			Create a room or join one to start watching together
+		</p>
 	</div>
 
 	<div class="mb-12 grid gap-4 sm:grid-cols-2">
@@ -190,13 +196,13 @@
 					bind:value={joinRoomId}
 					placeholder="Enter room ID"
 					disabled={isJoining}
-					class="flex-1 rounded-lg border border-white/20 bg-black/30 px-4 py-2 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+					class="flex-1 rounded-lg border border-white/20 bg-black/30 px-4 py-2 text-sm text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
 					onkeydown={(e) => e.key === 'Enter' && !isJoining && joinRoom()}
 				/>
 				<button
 					onclick={joinRoom}
 					disabled={isJoining || !joinRoomId.trim()}
-					class="bg-primary rounded-lg px-4 sm:px-6 py-2 text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm sm:text-base"
+					class="bg-primary flex items-center gap-2 rounded-lg px-4 py-2 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6 sm:text-base"
 				>
 					{#if isJoining}
 						<Loader class="h-4 w-4 animate-spin" />
@@ -210,14 +216,14 @@
 	</div>
 
 	<div>
-		<h2 class="mb-4 flex items-center gap-2 text-xl sm:text-2xl font-bold text-white">
+		<h2 class="mb-4 flex items-center gap-2 text-xl font-bold text-white sm:text-2xl">
 			<Video class="h-6 w-6" />
 			My Rooms
 		</h2>
 
 		{#if loading}
 			<div class="flex flex-col items-center justify-center py-12 text-white/60">
-				<Loader class="h-12 w-12 animate-spin mb-4" />
+				<Loader class="mb-4 h-12 w-12 animate-spin" />
 				<p>Loading rooms...</p>
 			</div>
 		{:else if error}
@@ -241,14 +247,20 @@
 				{#each rooms as room}
 					<a
 						href="/room/{room.id}"
-						class="group rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-all hover:border-purple-500/50 hover:scale-105"
+						class="group rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-purple-500/50"
 					>
 						<div class="mb-4 flex items-start justify-between">
-							<h3 class="text-lg font-semibold text-white transition group-hover:text-purple-400 wrap-break-words">
+							<h3
+								class="wrap-break-words text-lg font-semibold text-white transition group-hover:text-purple-400"
+							>
 								{room.name}
 							</h3>
 							{#if room.is_playing}
-								<div class="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400 whitespace-nowrap ml-2">Live</div>
+								<div
+									class="ml-2 rounded bg-green-500/20 px-2 py-1 text-xs whitespace-nowrap text-green-400"
+								>
+									Live
+								</div>
 							{/if}
 						</div>
 
@@ -281,7 +293,7 @@
 				bind:value={newRoomName}
 				placeholder="Enter room name"
 				disabled={isCreating}
-				class="mb-6 w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+				class="mb-6 w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				onkeydown={(e) => e.key === 'Enter' && !isCreating && createRoom()}
 			/>
 
@@ -292,14 +304,14 @@
 						newRoomName = '';
 					}}
 					disabled={isCreating}
-					class="flex-1 rounded-lg bg-white/10 px-4 py-3 text-white transition hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+					class="flex-1 rounded-lg bg-white/10 px-4 py-3 text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					Cancel
 				</button>
 				<button
 					onclick={createRoom}
 					disabled={isCreating || !newRoomName.trim()}
-					class="bg-primary flex-1 rounded-lg px-4 py-3 text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+					class="bg-primary flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{#if isCreating}
 						<Loader class="h-4 w-4 animate-spin" />

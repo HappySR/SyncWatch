@@ -494,7 +494,7 @@
 	<!-- External Fullscreen Button -->
 	<button
 		onclick={toggleFullscreen}
-		class="absolute -bottom-12 right-0 z-40 rounded-lg bg-black/80 p-3 text-white backdrop-blur-sm transition-all hover:bg-black
+		class="absolute right-0 -bottom-12 z-40 rounded-lg bg-black/80 p-3 text-white backdrop-blur-sm transition-all hover:bg-black
 			{isFullscreen ? 'opacity-0 hover:opacity-100' : 'opacity-100'}"
 		class:fullscreen-button-hidden={isFullscreen && !showFullscreenButton}
 		title="Toggle Fullscreen"

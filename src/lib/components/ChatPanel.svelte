@@ -184,7 +184,7 @@
 {#if !isFullscreen}
 	<div
 		class="bg-surface border-border flex flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
-		style="min-height: 800px;"
+		style="height: 100%;"
 	>
 		<!-- Video Call Section -->
 		<div class="border-border bg-surface-hover/50 shrink-0 border-b p-4">
@@ -199,8 +199,8 @@
 			</p>
 		</div>
 
-		<!-- Chat Messages - Takes remaining space -->
-		<div class="relative min-h-0 flex-1 overflow-hidden">
+		<!-- Chat Messages - Fixed height with scroll -->
+		<div class="relative overflow-hidden" style="height: 800px;">
 			<ChatMessages {messages} containerRef={chatContainer} />
 
 			<!-- Scroll to bottom indicator -->

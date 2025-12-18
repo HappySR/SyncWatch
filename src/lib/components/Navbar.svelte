@@ -8,6 +8,7 @@
 	let showMenu = $state(false);
 	let menuRef: HTMLDivElement | undefined = $state(undefined);
 	let buttonRef: HTMLButtonElement | undefined = $state(undefined);
+	let isSigningOut = $state(false);
 
 	function handleClickOutside(event: MouseEvent) {
 		if (
@@ -34,8 +35,16 @@
 	});
 
 	async function handleSignOut() {
-		await signOut();
-		goto('/');
+		if (isSigningOut) return;
+
+		isSigningOut = true;
+		try {
+			await signOut();
+			goto('/');
+		} catch (error) {
+			console.error('Sign out error:', error);
+			isSigningOut = false;
+		}
 	}
 </script>
 

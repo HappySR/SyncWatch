@@ -22,10 +22,10 @@
 		try {
 			const roomId = await roomStore.createRoom(roomName.trim());
 			console.log('Room created with ID:', roomId);
-			
+
 			// Small delay to ensure database writes complete
 			await new Promise((resolve) => setTimeout(resolve, 500));
-			
+
 			goto(`/room/${roomId}`);
 		} catch (err: any) {
 			console.error('Create room error:', err);
@@ -36,15 +36,15 @@
 </script>
 
 <div class="mx-auto max-w-2xl px-4 py-8 sm:py-12">
-	<div class="rounded-2xl border border-white/10 bg-white/5 p-6 sm:p-8 backdrop-blur-sm">
+	<div class="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm sm:p-8">
 		<div class="mb-8 text-center">
 			<div
-				class="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-2xl shadow-purple-500/50"
+				class="bg-primary mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl shadow-2xl shadow-purple-500/50"
 			>
 				<Video class="h-8 w-8 text-white" />
 			</div>
-			<h1 class="mb-2 text-2xl sm:text-3xl font-bold text-white">Create a Room</h1>
-			<p class="text-white/60 text-sm sm:text-base">Set up your watch party and invite friends</p>
+			<h1 class="mb-2 text-2xl font-bold text-white sm:text-3xl">Create a Room</h1>
+			<p class="text-sm text-white/60 sm:text-base">Set up your watch party and invite friends</p>
 		</div>
 
 		<form
@@ -64,19 +64,19 @@
 					bind:value={roomName}
 					placeholder="e.g., Movie Night with Friends"
 					disabled={loading}
-					class="w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+					class="w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 				/>
 			</div>
 
 			<fieldset disabled={loading}>
 				<legend class="mb-3 block text-sm font-medium text-white/80"> Privacy </legend>
-				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 					<button
 						type="button"
 						onclick={() => (isPublic = true)}
 						class="rounded-lg border-2 p-4 text-left transition
               {isPublic ? 'border-purple-500 bg-purple-500/10' : 'border-white/20 bg-white/5'}
-              disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<Globe class="mb-2 h-5 w-5 {isPublic ? 'text-purple-400' : 'text-white/60'}" />
 						<div class="mb-1 text-sm font-medium text-white">Public</div>
@@ -88,7 +88,7 @@
 						onclick={() => (isPublic = false)}
 						class="rounded-lg border-2 p-4 text-left transition
               {!isPublic ? 'border-purple-500 bg-purple-500/10' : 'border-white/20 bg-white/5'}
-              disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<Lock class="mb-2 h-5 w-5 {!isPublic ? 'text-purple-400' : 'text-white/60'}" />
 						<div class="mb-1 text-sm font-medium text-white">Private</div>
@@ -103,19 +103,19 @@
 				</div>
 			{/if}
 
-			<div class="flex flex-col sm:flex-row gap-3 pt-4">
+			<div class="flex flex-col gap-3 pt-4 sm:flex-row">
 				<button
 					type="button"
 					onclick={() => goto('/dashboard')}
 					disabled={loading}
-					class="flex-1 rounded-lg bg-white/10 px-6 py-3 font-medium text-white transition hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+					class="flex-1 rounded-lg bg-white/10 px-6 py-3 font-medium text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					Cancel
 				</button>
 				<button
 					type="submit"
 					disabled={loading || !roomName.trim()}
-					class="bg-primary flex-1 rounded-lg px-6 py-3 font-medium text-white transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+					class="bg-primary flex flex-1 items-center justify-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{#if loading}
 						<Loader class="h-5 w-5 animate-spin" />

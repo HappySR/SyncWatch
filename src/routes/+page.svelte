@@ -14,7 +14,7 @@
 
 	async function handleGoogleSignIn() {
 		if (isSigningIn) return;
-		
+
 		isSigningIn = true;
 		try {
 			await signInWithGoogle();
@@ -31,19 +31,19 @@
 		<!-- Hero Section -->
 		<div class="space-y-6">
 			<div class="flex justify-center">
-				<div class="bg-primary rounded-2xl p-4 shadow-2xl shadow-purple-500/50 animate-pulse-slow">
-					<Play class="h-12 w-12 md:h-16 md:w-16 text-white" fill="white" />
-				</div>
+				<img
+					src="/SyncWatch-nobg1.png"
+					alt="SyncWatch"
+					class="animate-pulse-slow h-24 w-auto drop-shadow-2xl md:h-32"
+				/>
 			</div>
 
-			<h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight">
+			<h1 class="text-4xl leading-tight font-bold text-white sm:text-5xl md:text-6xl lg:text-7xl">
 				Watch
-				<span class="bg-primary bg-clip-text text-transparent animate-gradient">
-					Together
-				</span>
+				<span class="bg-primary animate-gradient bg-clip-text text-transparent"> Together </span>
 			</h1>
 
-			<p class="mx-auto max-w-2xl text-base sm:text-lg md:text-xl lg:text-2xl text-white/70 px-4">
+			<p class="mx-auto max-w-2xl px-4 text-base text-white/70 sm:text-lg md:text-xl lg:text-2xl">
 				Experience movies and shows with friends in perfect sync. Zero latency, infinite fun.
 			</p>
 		</div>
@@ -53,7 +53,7 @@
 			<button
 				onclick={handleGoogleSignIn}
 				disabled={isSigningIn}
-				class="group relative flex items-center gap-3 rounded-xl bg-white px-6 py-4 sm:px-8 sm:py-5 text-base sm:text-lg font-semibold text-gray-900 shadow-2xl transition-all hover:scale-105 hover:bg-gray-100 hover:shadow-purple-500/50 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 w-full sm:w-auto max-w-sm"
+				class="group relative flex w-full max-w-sm items-center gap-3 rounded-xl bg-white px-6 py-4 text-base font-semibold text-gray-900 shadow-2xl transition-all hover:scale-105 hover:bg-gray-100 hover:shadow-purple-500/50 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100 sm:w-auto sm:px-8 sm:py-5 sm:text-lg"
 			>
 				{#if isSigningIn}
 					<Loader class="h-6 w-6 animate-spin" />
@@ -82,28 +82,38 @@
 			</button>
 		</div>
 
-		<p class="text-xs sm:text-sm text-white/40">Free forever • No credit card required</p>
+		<p class="text-xs text-white/40 sm:text-sm">Free forever • No credit card required</p>
 
 		<!-- Features -->
-		<div class="grid gap-4 sm:gap-6 py-8 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-			<div class="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 backdrop-blur-sm hover:border-purple-500/30 transition-all hover:scale-105">
-				<Wifi class="mx-auto mb-3 sm:mb-4 h-10 w-10 sm:h-12 sm:w-12 text-purple-400" />
-				<h3 class="mb-2 text-base sm:text-lg font-semibold text-white">Zero Latency Sync</h3>
-				<p class="text-xs sm:text-sm text-white/60">
+		<div class="grid grid-cols-1 gap-4 py-8 sm:grid-cols-2 sm:gap-6 md:grid-cols-3">
+			<div
+				class="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm transition-all hover:scale-105 hover:border-purple-500/30 sm:p-6"
+			>
+				<Wifi class="mx-auto mb-3 h-10 w-10 text-purple-400 sm:mb-4 sm:h-12 sm:w-12" />
+				<h3 class="mb-2 text-base font-semibold text-white sm:text-lg">Zero Latency Sync</h3>
+				<p class="text-xs text-white/60 sm:text-sm">
 					Real-time synchronization keeps everyone perfectly in sync
 				</p>
 			</div>
 
-			<div class="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 backdrop-blur-sm hover:border-pink-500/30 transition-all hover:scale-105">
-				<Users class="mx-auto mb-3 sm:mb-4 h-10 w-10 sm:h-12 sm:w-12 text-pink-400" />
-				<h3 class="mb-2 text-base sm:text-lg font-semibold text-white">Watch With Friends</h3>
-				<p class="text-xs sm:text-sm text-white/60">Create rooms and invite anyone to watch together</p>
+			<div
+				class="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm transition-all hover:scale-105 hover:border-pink-500/30 sm:p-6"
+			>
+				<Users class="mx-auto mb-3 h-10 w-10 text-pink-400 sm:mb-4 sm:h-12 sm:w-12" />
+				<h3 class="mb-2 text-base font-semibold text-white sm:text-lg">Watch With Friends</h3>
+				<p class="text-xs text-white/60 sm:text-sm">
+					Create rooms and invite anyone to watch together
+				</p>
 			</div>
 
-			<div class="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 backdrop-blur-sm hover:border-blue-500/30 transition-all hover:scale-105 sm:col-span-2 md:col-span-1">
-				<Sparkles class="mx-auto mb-3 sm:mb-4 h-10 w-10 sm:h-12 sm:w-12 text-blue-400" />
-				<h3 class="mb-2 text-base sm:text-lg font-semibold text-white">Universal Support</h3>
-				<p class="text-xs sm:text-sm text-white/60">YouTube, direct links, and more - all in one place</p>
+			<div
+				class="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm transition-all hover:scale-105 hover:border-blue-500/30 sm:col-span-2 sm:p-6 md:col-span-1"
+			>
+				<Sparkles class="mx-auto mb-3 h-10 w-10 text-blue-400 sm:mb-4 sm:h-12 sm:w-12" />
+				<h3 class="mb-2 text-base font-semibold text-white sm:text-lg">Universal Support</h3>
+				<p class="text-xs text-white/60 sm:text-sm">
+					YouTube, direct links, and more - all in one place
+				</p>
 			</div>
 		</div>
 	</div>
@@ -111,20 +121,30 @@
 
 <style>
 	@keyframes gradient {
-		0%, 100% { background-position: 0% 50%; }
-		50% { background-position: 100% 50%; }
+		0%,
+		100% {
+			background-position: 0% 50%;
+		}
+		50% {
+			background-position: 100% 50%;
+		}
 	}
-	
+
 	.animate-gradient {
 		background-size: 200% auto;
 		animation: gradient 3s linear infinite;
 	}
-	
+
 	@keyframes pulse-slow {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.8; }
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.8;
+		}
 	}
-	
+
 	.animate-pulse-slow {
 		animation: pulse-slow 2s ease-in-out infinite;
 	}

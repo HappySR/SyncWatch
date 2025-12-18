@@ -93,7 +93,7 @@
 				<div class="flex-1">
 					<div class="text-text-primary mb-1 font-medium">Show Chat in Fullscreen</div>
 					<div class="text-text-muted text-sm">
-						Display chat messages when video is in fullscreen mode
+						Display recent chat messages in top-right corner when video is in fullscreen mode
 					</div>
 				</div>
 				<button
@@ -115,7 +115,7 @@
 			{#if settingsStore.showChatInFullscreen}
 				<div>
 					<div class="mb-2 flex items-center justify-between">
-						<div class="text-text-primary font-medium">Chat Opacity in Fullscreen</div>
+						<div class="text-text-primary font-medium">Chat Overlay Opacity</div>
 						<div class="text-text-secondary text-sm">
 							{Math.round(settingsStore.chatOpacityInFullscreen * 100)}%
 						</div>
@@ -131,9 +131,13 @@
 						class="accent-primary w-full"
 					/>
 					<div class="text-text-muted mt-1 flex justify-between text-xs">
-						<span>10%</span>
-						<span>100%</span>
+						<span>10% (Subtle)</span>
+						<span>100% (Opaque)</span>
 					</div>
+					<p class="text-text-muted mt-2 text-xs">
+						💡 Adjust opacity to balance visibility with video viewing. Lower values are less
+						distracting.
+					</p>
 				</div>
 			{/if}
 		</div>

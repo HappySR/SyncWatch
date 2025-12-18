@@ -54,9 +54,9 @@
 	let localAudioTrack: IMicrophoneAudioTrack | null = null;
 	let remoteUsers = $state<Map<string, RemoteUser>>(new Map());
 
-	// UI states
-	let isMuted = $state(false);
-	let isVideoOff = $state(false);
+	// UI states - DEFAULT OFF
+	let isMuted = $state(true);
+	let isVideoOff = $state(true);
 	let isSharingScreen = $state(false);
 	let showSettings = $state(false);
 	let localVideoContainer: HTMLDivElement | undefined = $state(undefined);
@@ -66,6 +66,9 @@
 	let selectedMicrophone = $state<string>('');
 	let cameras = $state<MediaDeviceInfo[]>([]);
 	let microphones = $state<MediaDeviceInfo[]>([]);
+
+	// Expanded video states
+	let expandedVideos = $state<Set<string>>(new Set());
 
 	const channelName = $derived(`syncwatch-${roomStore.currentRoom?.id || 'default'}`);
 	const displayName = $derived(
@@ -200,6 +203,12 @@
 					encoderConfig: '720p_2'
 				}
 			);
+
+			// Set default states: muted and video off
+			await localAudioTrack.setEnabled(false);
+			await localVideoTrack.setEnabled(false);
+			isMuted = true;
+			isVideoOff = true;
 
 			if (localVideoContainer && localVideoTrack) {
 				localVideoTrack.play(localVideoContainer);
@@ -360,6 +369,7 @@
 		isInCall = false;
 		isMinimized = false;
 		isLoading = false;
+		expandedVideos = new Set();
 	}
 
 	async function cleanup() {
@@ -384,6 +394,15 @@
 	function toggleSettings() {
 		showSettings = !showSettings;
 	}
+
+	function toggleExpandVideo(uid: string) {
+		if (expandedVideos.has(uid)) {
+			expandedVideos.delete(uid);
+		} else {
+			expandedVideos.add(uid);
+		}
+		expandedVideos = new Set(expandedVideos);
+	}
 </script>
 
 <!-- Incoming Call Notification -->
@@ -400,15 +419,16 @@
 	{#if isFullscreen}
 		<!-- Always render video call in fullscreen, z-index above video player -->
 		<div
-			class="fixed z-9999 transition-all duration-300"
+			class="fixed transition-all duration-300"
 			class:minimized={isMinimized}
 			style={isMinimized
-				? 'right: 20px; bottom: 20px; width: auto; height: auto;'
-				: 'right: 20px; bottom: 20px; width: 400px; height: 500px;'}
+				? 'right: 20px; bottom: 20px; width: auto; height: auto; z-index: 10000;'
+				: 'right: 20px; bottom: 80px; width: 400px; max-height: 80vh; z-index: 10000;'}
 		>
 			{#if !isMinimized}
 				<div
-					class="flex h-full flex-col overflow-hidden rounded-xl border-2 border-white/20 bg-black shadow-2xl"
+					class="flex flex-col overflow-hidden rounded-xl border-2 border-white/20 bg-black shadow-2xl"
+					style="max-height: 80vh;"
 				>
 					<!-- Header -->
 					<div
@@ -443,28 +463,58 @@
 						</div>
 					</div>
 
-					<!-- Video Grid -->
-					<div class="flex-1 overflow-y-auto bg-black p-2">
-						<div class="grid h-full grid-cols-2 gap-2">
+					<!-- Video Grid - Scrollable -->
+					<div class="overflow-y-auto bg-black p-2" style="max-height: calc(80vh - 120px);">
+						<div class="space-y-2">
 							<!-- Local Video -->
-							<div class="relative overflow-hidden rounded-lg bg-gray-900">
+							<div
+								class="relative overflow-hidden rounded-lg bg-gray-900 transition-all"
+								class:expanded={expandedVideos.has('local')}
+								style={expandedVideos.has('local') ? 'height: 400px;' : 'height: 150px;'}
+							>
 								<div bind:this={localVideoContainer} class="h-full w-full"></div>
 								<div
 									class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
 								>
 									You {isVideoOff ? '(Video Off)' : ''}
 								</div>
+								<button
+									onclick={() => toggleExpandVideo('local')}
+									class="absolute top-2 right-2 rounded bg-black/60 p-1 text-white/80 transition hover:bg-black/80 hover:text-white"
+									title={expandedVideos.has('local') ? 'Minimize' : 'Maximize'}
+								>
+									{#if expandedVideos.has('local')}
+										<Minimize2 class="h-3 w-3" />
+									{:else}
+										<Maximize2 class="h-3 w-3" />
+									{/if}
+								</button>
 							</div>
 
 							<!-- Remote Videos -->
 							{#each Array.from(remoteUsers.values()) as user (user.uid)}
-								<div class="relative overflow-hidden rounded-lg bg-gray-900">
+								<div
+									class="relative overflow-hidden rounded-lg bg-gray-900 transition-all"
+									class:expanded={expandedVideos.has(user.uid)}
+									style={expandedVideos.has(user.uid) ? 'height: 400px;' : 'height: 150px;'}
+								>
 									<div id="remote-video-{user.uid}" class="h-full w-full"></div>
 									<div
 										class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
 									>
 										{user.displayName || `User ${user.uid}`}
 									</div>
+									<button
+										onclick={() => toggleExpandVideo(user.uid)}
+										class="absolute top-2 right-2 rounded bg-black/60 p-1 text-white/80 transition hover:bg-black/80 hover:text-white"
+										title={expandedVideos.has(user.uid) ? 'Minimize' : 'Maximize'}
+									>
+										{#if expandedVideos.has(user.uid)}
+											<Minimize2 class="h-3 w-3" />
+										{:else}
+											<Maximize2 class="h-3 w-3" />
+										{/if}
+									</button>
 								</div>
 							{/each}
 						</div>
@@ -526,8 +576,10 @@
 								</div>
 
 								<div>
-									<label class="mb-2 block text-sm text-white">Camera</label>
+									<label for="fullscreen-camera" class="mb-2 block text-sm text-white">Camera</label
+									>
 									<select
+										id="fullscreen-camera"
 										bind:value={selectedCamera}
 										onchange={changeCamera}
 										class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
@@ -541,8 +593,11 @@
 								</div>
 
 								<div>
-									<label class="mb-2 block text-sm text-white">Microphone</label>
+									<label for="fullscreen-microphone" class="mb-2 block text-sm text-white"
+										>Microphone</label
+									>
 									<select
+										id="fullscreen-microphone"
 										bind:value={selectedMicrophone}
 										onchange={changeMicrophone}
 										class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
@@ -562,10 +617,11 @@
 				<!-- Minimized Button -->
 				<button
 					onclick={toggleMinimize}
-					class="rounded-full border-2 border-white/20 bg-green-500 p-4 text-white shadow-2xl transition-all hover:scale-110 hover:bg-green-600"
+					class="flex items-center gap-2 rounded-full border-2 border-white/20 bg-green-500 px-4 py-3 text-white shadow-2xl transition-all hover:scale-110 hover:bg-green-600"
 					title="Show video call"
 				>
-					<Maximize2 class="h-6 w-6" />
+					<Users class="h-5 w-5" />
+					<span class="text-sm font-medium">{remoteUsers.size + 1}</span>
 				</button>
 			{/if}
 
@@ -667,39 +723,39 @@
 				</button>
 			</div>
 
-			{#if showSettings}
-				<div class="bg-surface-hover space-y-3 rounded-lg p-4">
-					<div>
-						<label class="text-text-secondary mb-1 block text-xs">Camera</label>
-						<select
-							bind:value={selectedCamera}
-							onchange={changeCamera}
-							class="bg-input text-text-primary w-full rounded px-2 py-1 text-sm"
+			<div>
+				<label for="chat-camera" class="text-text-secondary mb-1 block text-xs">Camera</label>
+				<select
+					id="chat-camera"
+					bind:value={selectedCamera}
+					onchange={changeCamera}
+					class="bg-input text-text-primary w-full rounded px-2 py-1 text-sm"
+				>
+					{#each cameras as camera}
+						<option value={camera.deviceId}
+							>{camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}</option
 						>
-							{#each cameras as camera}
-								<option value={camera.deviceId}
-									>{camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}</option
-								>
-							{/each}
-						</select>
-					</div>
+					{/each}
+				</select>
+			</div>
 
-					<div>
-						<label class="text-text-secondary mb-1 block text-xs">Microphone</label>
-						<select
-							bind:value={selectedMicrophone}
-							onchange={changeMicrophone}
-							class="bg-input text-text-primary w-full rounded px-2 py-1 text-sm"
+			<div>
+				<label for="chat-microphone" class="text-text-secondary mb-1 block text-xs"
+					>Microphone</label
+				>
+				<select
+					id="chat-microphone"
+					bind:value={selectedMicrophone}
+					onchange={changeMicrophone}
+					class="bg-input text-text-primary w-full rounded px-2 py-1 text-sm"
+				>
+					{#each microphones as mic}
+						<option value={mic.deviceId}
+							>{mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}</option
 						>
-							{#each microphones as mic}
-								<option value={mic.deviceId}
-									>{mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}</option
-								>
-							{/each}
-						</select>
-					</div>
-				</div>
-			{/if}
+					{/each}
+				</select>
+			</div>
 		</div>
 	{/if}
 {:else}
@@ -724,5 +780,9 @@
 	.minimized {
 		width: auto !important;
 		height: auto !important;
+	}
+
+	.expanded {
+		height: 400px !important;
 	}
 </style>

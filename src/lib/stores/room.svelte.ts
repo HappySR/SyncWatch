@@ -152,23 +152,23 @@ class RoomStore {
 		try {
 			const { data, error } = await supabase
 				.from('room_members')
-				.select(`
+				.select(
+					`
 					*,
 					profiles (*)
-				`)
+				`
+				)
 				.eq('room_id', roomId)
 				.order('joined_at', { ascending: true });
 
 			if (error) throw error;
 
 			const allMembers = data || [];
-			
-			// Preserve online status when reloading
-			const previousOnlineStatus = new Map(
-				this.members.map(m => [m.user_id, m.is_online])
-			);
 
-			this.members = allMembers.map(member => ({
+			// Preserve online status when reloading
+			const previousOnlineStatus = new Map(this.members.map((m) => [m.user_id, m.is_online]));
+
+			this.members = allMembers.map((member) => ({
 				...member,
 				is_online: previousOnlineStatus.get(member.user_id) ?? false
 			}));
@@ -319,7 +319,7 @@ class RoomStore {
 					console.log('🔄 Member updated:', payload.new);
 					// Update specific member without full reload
 					const updatedMember = payload.new as RoomMember;
-					const index = this.members.findIndex(m => m.id === updatedMember.id);
+					const index = this.members.findIndex((m) => m.id === updatedMember.id);
 					if (index !== -1) {
 						this.members[index] = { ...this.members[index], ...updatedMember };
 						this.members = [...this.members]; // Trigger reactivity
