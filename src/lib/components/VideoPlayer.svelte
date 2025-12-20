@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { Maximize, Minimize, Loader, Video } from 'lucide-svelte';
+	import { Maximize, Minimize, Loader, Video, SkipForward, SkipBack } from 'lucide-svelte';
 
 	let { onFullscreenChange = () => {} } = $props<{
 		onFullscreenChange?: (isFullscreen: boolean) => void;
@@ -13,6 +13,12 @@
 	let containerElement: HTMLDivElement | undefined = $state(undefined);
 	let isVideoLoading = $state(false);
 	let showFullscreenButton = $state(false);
+
+	// Double-tap seek states
+	let lastTapTime = 0;
+	let lastTapSide: 'left' | 'right' | null = null;
+	let showSeekIndicator = $state<'forward' | 'backward' | null>(null);
+	let seekIndicatorTimeout: any = null;
 
 	const videoUrl = $derived(playerStore.videoUrl);
 	const videoType = $derived(playerStore.videoType);
@@ -30,6 +36,9 @@
 	let directSyncInterval: any = null;
 	let isDirectVideoReady = $state(false);
 	let directSyncCheckInterval: any = null;
+	let isUserSeeking = false; // Track user-initiated seeks
+	let pendingSeekTime: number | null = null;
+	let seekDebounceTimeout: any = null;
 
 	onMount(() => {
 		loadYouTubeAPI();
@@ -51,6 +60,8 @@
 		if (ytSyncCheckInterval) clearInterval(ytSyncCheckInterval);
 		if (directSyncInterval) clearInterval(directSyncInterval);
 		if (directSyncCheckInterval) clearInterval(directSyncCheckInterval);
+		if (seekDebounceTimeout) clearTimeout(seekDebounceTimeout);
+		if (seekIndicatorTimeout) clearTimeout(seekIndicatorTimeout);
 	}
 
 	function handleFullscreenChange() {
@@ -77,6 +88,54 @@
 				(document as any).webkitExitFullscreen();
 			}
 		}
+	}
+
+	// ==================== DOUBLE TAP SEEK ====================
+
+	function handleVideoClick(e: MouseEvent) {
+		if (!videoElement || videoType !== 'direct') return;
+
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		const clickX = e.clientX - rect.left;
+		const side = clickX < rect.width / 2 ? 'left' : 'right';
+		const now = Date.now();
+
+		// Check for double tap (within 300ms)
+		if (now - lastTapTime < 300 && lastTapSide === side) {
+			// Double tap detected!
+			const seekAmount = side === 'left' ? -10 : 10;
+			handleDoubleTapSeek(seekAmount);
+			lastTapTime = 0; // Reset to prevent triple tap
+			lastTapSide = null;
+		} else {
+			lastTapTime = now;
+			lastTapSide = side;
+		}
+	}
+
+	async function handleDoubleTapSeek(amount: number) {
+		if (!videoElement || !isDirectVideoReady) return;
+
+		const newTime = Math.max(0, Math.min(videoElement.duration, videoElement.currentTime + amount));
+		
+		// Show indicator
+		showSeekIndicator = amount > 0 ? 'forward' : 'backward';
+		if (seekIndicatorTimeout) clearTimeout(seekIndicatorTimeout);
+		seekIndicatorTimeout = setTimeout(() => {
+			showSeekIndicator = null;
+		}, 500);
+
+		// Perform seek
+		isUserSeeking = true;
+		videoElement.currentTime = newTime;
+		lastDirectTime = newTime;
+		
+		// Broadcast the seek
+		await playerStore.seek(newTime);
+		
+		setTimeout(() => {
+			isUserSeeking = false;
+		}, 100);
 	}
 
 	// ==================== YOUTUBE FUNCTIONS ====================
@@ -139,7 +198,7 @@
 				controls: 1,
 				modestbranding: 1,
 				rel: 0,
-				fs: 1, // Enable native fullscreen
+				fs: 1,
 				playsinline: 1,
 				autoplay: 0,
 				enablejsapi: 1,
@@ -207,7 +266,6 @@
 		}, 500);
 	}
 
-	// Check for desync every 3 seconds and force sync if > 2 seconds off
 	function startYouTubeSyncCheck() {
 		if (ytSyncCheckInterval) clearInterval(ytSyncCheckInterval);
 
@@ -284,8 +342,9 @@
 					playerStore.duration = duration;
 				}
 
+				// Only track user seeks (not programmatic ones)
 				const timeDiff = Math.abs(videoTime - lastDirectTime);
-				if (timeDiff > 2 && !playerStore.isSyncing && !videoElement.seeking) {
+				if (timeDiff > 2 && !playerStore.isSyncing && !videoElement.seeking && !isUserSeeking) {
 					console.log('⏩ Direct video seek detected:', lastDirectTime, '→', videoTime);
 					playerStore.seek(videoTime);
 				}
@@ -299,12 +358,11 @@
 		}, 500);
 	}
 
-	// Check for desync every 3 seconds
 	function startDirectSyncCheck() {
 		if (directSyncCheckInterval) clearInterval(directSyncCheckInterval);
 
 		directSyncCheckInterval = setInterval(() => {
-			if (!videoElement || !isDirectVideoReady || playerStore.isSyncing) return;
+			if (!videoElement || !isDirectVideoReady || playerStore.isSyncing || isUserSeeking) return;
 
 			try {
 				const videoTime = videoElement.currentTime;
@@ -330,15 +388,20 @@
 			console.log('🔄 Syncing direct video:', { isPlaying, currentTime, videoTime, isPaused });
 
 			const timeDiff = Math.abs(videoTime - currentTime);
-			if (timeDiff > 1 && !videoElement.seeking) {
+			if (timeDiff > 1 && !videoElement.seeking && !isUserSeeking) {
 				console.log('⏩ Seeking direct video to:', currentTime);
 				videoElement.currentTime = currentTime;
 				lastDirectTime = currentTime;
 			}
 
-			if (isPlaying && isPaused) {
+			if (isPlaying && isPaused && !isUserSeeking) {
 				console.log('▶️ Starting direct video playback');
-				videoElement.play().catch((e) => console.log('Autoplay prevented:', e));
+				const playPromise = videoElement.play();
+				if (playPromise !== undefined) {
+					playPromise.catch((e) => {
+						console.log('Autoplay prevented, waiting for user interaction:', e);
+					});
+				}
 			} else if (!isPlaying && !isPaused) {
 				console.log('⏸️ Pausing direct video playback');
 				videoElement.pause();
@@ -395,7 +458,7 @@
 	}
 
 	function handleDirectVideoPlay() {
-		if (playerStore.isSyncing || !isDirectVideoReady) return;
+		if (playerStore.isSyncing || !isDirectVideoReady || isUserSeeking) return;
 
 		if (!isPlaying && videoElement) {
 			const videoTime = videoElement.currentTime;
@@ -406,7 +469,7 @@
 	}
 
 	function handleDirectVideoPause() {
-		if (playerStore.isSyncing || !isDirectVideoReady) return;
+		if (playerStore.isSyncing || !isDirectVideoReady || isUserSeeking) return;
 
 		if (isPlaying && videoElement) {
 			const videoTime = videoElement.currentTime;
@@ -416,16 +479,32 @@
 		}
 	}
 
+	function handleDirectVideoSeeking() {
+		// Mark that seeking is in progress
+		if (!isUserSeeking && !playerStore.isSyncing) {
+			isUserSeeking = true;
+			if (seekDebounceTimeout) clearTimeout(seekDebounceTimeout);
+		}
+	}
+
 	function handleDirectVideoSeeked() {
 		if (playerStore.isSyncing || !isDirectVideoReady || !videoElement) return;
 
-		const videoTime = videoElement.currentTime;
-		const timeDiff = Math.abs(videoTime - lastDirectTime);
+		// Debounce to handle the end of seek operation
+		if (seekDebounceTimeout) clearTimeout(seekDebounceTimeout);
+		
+		seekDebounceTimeout = setTimeout(() => {
+			const videoTime = videoElement!.currentTime;
+			const timeDiff = Math.abs(videoTime - lastDirectTime);
 
-		if (timeDiff > 2) {
-			playerStore.seek(videoTime);
-			lastDirectTime = videoTime;
-		}
+			if (timeDiff > 1) {
+				console.log('✅ User seek completed:', videoTime);
+				playerStore.seek(videoTime);
+				lastDirectTime = videoTime;
+			}
+			
+			isUserSeeking = false;
+		}, 200);
 	}
 
 	function handleDirectVideoWaiting() {
@@ -439,6 +518,14 @@
 	function handleDirectVideoError(e: Event) {
 		console.error('❌ Direct video error:', e);
 		isVideoLoading = false;
+		
+		// Don't show alert for common network errors during seeking
+		if (videoElement?.error?.code === MediaError.MEDIA_ERR_NETWORK && isUserSeeking) {
+			console.log('Network error during seek, will retry...');
+			isUserSeeking = false;
+			return;
+		}
+		
 		alert('Failed to load video. Please check the URL and try again.');
 	}
 </script>
@@ -464,24 +551,59 @@
 		{:else if videoType === 'youtube'}
 			<div id="youtube-player" class="h-full w-full"></div>
 		{:else}
-			<video
-				bind:this={videoElement}
-				class="h-full w-full"
-				controls
-				preload="metadata"
-				onloadedmetadata={handleDirectVideoLoadedMetadata}
-				onplay={handleDirectVideoPlay}
-				onpause={handleDirectVideoPause}
-				onseeked={handleDirectVideoSeeked}
-				onwaiting={handleDirectVideoWaiting}
-				oncanplay={handleDirectVideoCanPlay}
-				onerror={handleDirectVideoError}
+			<div 
+				class="relative h-full w-full cursor-pointer" 
+				role="button"
+				tabindex="0"
+				aria-label="Video player with double-tap seek support"
+				onclick={handleVideoClick}
+				onkeydown={(e) => {
+					if (e.key === 'ArrowLeft') {
+						handleDoubleTapSeek(-10);
+					} else if (e.key === 'ArrowRight') {
+						handleDoubleTapSeek(10);
+					}
+				}}
 			>
-				<track kind="captions" />
-			</video>
+				<video
+					bind:this={videoElement}
+					class="h-full w-full"
+					controls
+					preload="metadata"
+					onloadedmetadata={handleDirectVideoLoadedMetadata}
+					onplay={handleDirectVideoPlay}
+					onpause={handleDirectVideoPause}
+					onseeking={handleDirectVideoSeeking}
+					onseeked={handleDirectVideoSeeked}
+					onwaiting={handleDirectVideoWaiting}
+					oncanplay={handleDirectVideoCanPlay}
+					onerror={handleDirectVideoError}
+				>
+					<track kind="captions" />
+				</video>
+
+				<!-- Double Tap Seek Indicators -->
+				{#if showSeekIndicator === 'backward'}
+					<div class="absolute left-8 top-1/2 -translate-y-1/2 pointer-events-none">
+						<div class="bg-black/70 backdrop-blur-sm rounded-full p-4 animate-fade-out">
+							<SkipBack class="h-12 w-12 text-white" />
+							<div class="text-white text-center mt-2 font-semibold">-10s</div>
+						</div>
+					</div>
+				{/if}
+				
+				{#if showSeekIndicator === 'forward'}
+					<div class="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none">
+						<div class="bg-black/70 backdrop-blur-sm rounded-full p-4 animate-fade-out">
+							<SkipForward class="h-12 w-12 text-white" />
+							<div class="text-white text-center mt-2 font-semibold">+10s</div>
+						</div>
+					</div>
+				{/if}
+			</div>
 
 			{#if isVideoLoading}
-				<div class="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+				<div class="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
 					<div class="text-center text-white">
 						<Loader class="mx-auto mb-2 h-12 w-12 animate-spin" />
 						<p>Loading video...</p>
@@ -524,5 +646,20 @@
 	.fullscreen-button-hidden {
 		opacity: 0;
 		pointer-events: none;
+	}
+
+	@keyframes fade-out {
+		0% {
+			opacity: 1;
+			transform: scale(1);
+		}
+		100% {
+			opacity: 0;
+			transform: scale(0.8);
+		}
+	}
+
+	.animate-fade-out {
+		animation: fade-out 0.5s ease-out forwards;
 	}
 </style>
