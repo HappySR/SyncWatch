@@ -36,22 +36,25 @@
 	let directSyncInterval: any = null;
 	let isDirectVideoReady = $state(false);
 	let directSyncCheckInterval: any = null;
-	let isUserSeeking = false; // Track user-initiated seeks
-	let pendingSeekTime: number | null = null;
+	let isUserSeeking = false;
 	let seekDebounceTimeout: any = null;
 	let hasUserInteracted = $state(false);
 	let pendingPlayRequest = $state(false);
+	let ignoreNextPlayEvent = false;
+	let ignoreNextPauseEvent = false;
 
 	onMount(() => {
 		loadYouTubeAPI();
 		document.addEventListener('fullscreenchange', handleFullscreenChange);
 		document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+		document.addEventListener('keydown', handleGlobalKeydown);
 	});
 
 	onDestroy(() => {
 		cleanup();
 		document.removeEventListener('fullscreenchange', handleFullscreenChange);
 		document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+		document.removeEventListener('keydown', handleGlobalKeydown);
 	});
 
 	function cleanup() {
@@ -92,10 +95,50 @@
 		}
 	}
 
+	// ==================== KEYBOARD CONTROLS ====================
+
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		// Only handle if video is loaded and no input is focused
+		if (!videoElement || !isDirectVideoReady) return;
+		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+		if (e.key === 'ArrowLeft') {
+			e.preventDefault();
+			handleKeyboardSeek(-10);
+		} else if (e.key === 'ArrowRight') {
+			e.preventDefault();
+			handleKeyboardSeek(10);
+		}
+	}
+
+	async function handleKeyboardSeek(amount: number) {
+		if (!videoElement || !isDirectVideoReady || !playerStore.canControl()) return;
+
+		const newTime = Math.max(0, Math.min(videoElement.duration, videoElement.currentTime + amount));
+		
+		// Show indicator
+		showSeekIndicator = amount > 0 ? 'forward' : 'backward';
+		if (seekIndicatorTimeout) clearTimeout(seekIndicatorTimeout);
+		seekIndicatorTimeout = setTimeout(() => {
+			showSeekIndicator = null;
+		}, 500);
+
+		// Perform seek and broadcast
+		isUserSeeking = true;
+		videoElement.currentTime = newTime;
+		lastDirectTime = newTime;
+		
+		await playerStore.seek(newTime);
+		
+		setTimeout(() => {
+			isUserSeeking = false;
+		}, 100);
+	}
+
 	// ==================== DOUBLE TAP SEEK ====================
 
 	function handleVideoClick(e: MouseEvent) {
-		if (!videoElement || videoType !== 'direct') return;
+		if (!videoElement || videoType !== 'direct' || !playerStore.canControl()) return;
 
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const clickX = e.clientX - rect.left;
@@ -104,10 +147,10 @@
 
 		// Check for double tap (within 300ms)
 		if (now - lastTapTime < 300 && lastTapSide === side) {
-			// Double tap detected!
+			e.preventDefault();
 			const seekAmount = side === 'left' ? -10 : 10;
 			handleDoubleTapSeek(seekAmount);
-			lastTapTime = 0; // Reset to prevent triple tap
+			lastTapTime = 0;
 			lastTapSide = null;
 		} else {
 			lastTapTime = now;
@@ -127,12 +170,11 @@
 			showSeekIndicator = null;
 		}, 500);
 
-		// Perform seek
+		// Perform seek and broadcast
 		isUserSeeking = true;
 		videoElement.currentTime = newTime;
 		lastDirectTime = newTime;
 		
-		// Broadcast the seek
 		await playerStore.seek(newTime);
 		
 		setTimeout(() => {
@@ -328,13 +370,8 @@
 		hasUserInteracted = false;
 		pendingPlayRequest = false;
 
-		// Set video source
 		videoElement.src = videoUrl;
-		
-		// Optimize loading with preload hint
 		videoElement.preload = 'auto';
-		
-		// Start loading
 		videoElement.load();
 	}
 
@@ -352,10 +389,10 @@
 					playerStore.duration = duration;
 				}
 
-				// Only track user seeks (not programmatic ones)
+				// Only detect user-initiated seeks (not programmatic)
 				const timeDiff = Math.abs(videoTime - lastDirectTime);
 				if (timeDiff > 2 && !playerStore.isSyncing && !videoElement.seeking && !isUserSeeking) {
-					console.log('⏩ Direct video seek detected:', lastDirectTime, '→', videoTime);
+					console.log('⏩ Direct video USER seek detected:', lastDirectTime, '→', videoTime);
 					playerStore.seek(videoTime);
 				}
 
@@ -406,9 +443,11 @@
 
 			if (isPlaying && isPaused && !isUserSeeking) {
 				console.log('▶️ Starting direct video playback');
+				ignoreNextPlayEvent = true;
 				attemptVideoPlay();
 			} else if (!isPlaying && !isPaused) {
 				console.log('⏸️ Pausing direct video playback');
+				ignoreNextPauseEvent = true;
 				videoElement.pause();
 			}
 		} catch (e) {
@@ -428,7 +467,6 @@
 			if (error.name === 'NotAllowedError' || error.name === 'AbortError') {
 				console.log('⏸️ Autoplay blocked - waiting for user interaction');
 				pendingPlayRequest = true;
-				// Don't throw error, just wait for user interaction
 			} else {
 				console.error('❌ Play error:', error);
 			}
@@ -482,6 +520,13 @@
 	}
 
 	function handleDirectVideoPlay() {
+		// Ignore if this play was triggered by sync
+		if (ignoreNextPlayEvent) {
+			console.log('🔕 Ignoring play event (triggered by sync)');
+			ignoreNextPlayEvent = false;
+			return;
+		}
+
 		if (playerStore.isSyncing || !isDirectVideoReady || isUserSeeking) return;
 
 		hasUserInteracted = true;
@@ -489,6 +534,7 @@
 
 		if (!isPlaying && videoElement) {
 			const videoTime = videoElement.currentTime;
+			console.log('👆 USER PLAY detected, broadcasting...');
 			playerStore.currentTime = videoTime;
 			lastDirectTime = videoTime;
 			playerStore.play();
@@ -496,10 +542,18 @@
 	}
 
 	function handleDirectVideoPause() {
+		// Ignore if this pause was triggered by sync
+		if (ignoreNextPauseEvent) {
+			console.log('🔕 Ignoring pause event (triggered by sync)');
+			ignoreNextPauseEvent = false;
+			return;
+		}
+
 		if (playerStore.isSyncing || !isDirectVideoReady || isUserSeeking) return;
 
 		if (isPlaying && videoElement) {
 			const videoTime = videoElement.currentTime;
+			console.log('👆 USER PAUSE detected, broadcasting...');
 			playerStore.currentTime = videoTime;
 			lastDirectTime = videoTime;
 			playerStore.pause();
@@ -507,7 +561,6 @@
 	}
 
 	function handleDirectVideoSeeking() {
-		// Mark that seeking is in progress
 		if (!isUserSeeking && !playerStore.isSyncing) {
 			isUserSeeking = true;
 			if (seekDebounceTimeout) clearTimeout(seekDebounceTimeout);
@@ -517,15 +570,16 @@
 	function handleDirectVideoSeeked() {
 		if (playerStore.isSyncing || !isDirectVideoReady || !videoElement) return;
 
-		// Debounce to handle the end of seek operation
 		if (seekDebounceTimeout) clearTimeout(seekDebounceTimeout);
 		
 		seekDebounceTimeout = setTimeout(() => {
-			const videoTime = videoElement!.currentTime;
+			if (!videoElement) return;
+			
+			const videoTime = videoElement.currentTime;
 			const timeDiff = Math.abs(videoTime - lastDirectTime);
 
 			if (timeDiff > 1) {
-				console.log('✅ User seek completed:', videoTime);
+				console.log('✅ USER seek completed, broadcasting:', videoTime);
 				playerStore.seek(videoTime);
 				lastDirectTime = videoTime;
 			}
@@ -541,7 +595,6 @@
 	function handleDirectVideoCanPlay() {
 		isVideoLoading = false;
 		
-		// If there's a pending play request, try again
 		if (pendingPlayRequest && isPlaying) {
 			console.log('🔄 Retrying play after canplay event');
 			attemptVideoPlay();
@@ -554,30 +607,25 @@
 		const error = videoElement.error;
 		console.error('❌ Direct video error:', e, error);
 		
-		// Ignore network errors during seeking - they're usually temporary
 		if (error?.code === MediaError.MEDIA_ERR_NETWORK && isUserSeeking) {
 			console.log('⚠️ Network error during seek, ignoring...');
 			isUserSeeking = false;
 			return;
 		}
 		
-		// Ignore decode errors if video is still loading
 		if (error?.code === MediaError.MEDIA_ERR_DECODE && isVideoLoading) {
 			console.log('⚠️ Decode error during loading, ignoring...');
 			return;
 		}
 		
-		// Only show alert for critical errors
 		if (error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
 			isVideoLoading = false;
 			alert('Video format not supported. Please use MP4, WebM, or OGG format.');
 		} else if (error?.code === MediaError.MEDIA_ERR_ABORTED) {
-			// User aborted, don't show error
 			console.log('ℹ️ Video loading aborted by user');
 		}
 	}
 
-	// Handle user interaction to enable autoplay
 	function handleUserInteraction() {
 		hasUserInteracted = true;
 		if (pendingPlayRequest && videoElement && isPlaying) {
@@ -609,20 +657,17 @@
 			<div id="youtube-player" class="h-full w-full"></div>
 		{:else}
 			<div 
-				class="relative h-full w-full cursor-pointer" 
+				class="relative h-full w-full" 
 				role="button"
-				tabindex="0"
+				tabindex="-1"
 				aria-label="Video player with double-tap seek support"
 				onclick={(e) => {
 					handleUserInteraction();
 					handleVideoClick(e);
 				}}
 				onkeydown={(e) => {
-					handleUserInteraction();
-					if (e.key === 'ArrowLeft') {
-						handleDoubleTapSeek(-10);
-					} else if (e.key === 'ArrowRight') {
-						handleDoubleTapSeek(10);
+					if (e.key === 'Enter' || e.key === ' ') {
+						handleUserInteraction();
 					}
 				}}
 			>
@@ -661,7 +706,7 @@
 
 				<!-- Double Tap Seek Indicators -->
 				{#if showSeekIndicator === 'backward'}
-					<div class="absolute left-8 top-1/2 -translate-y-1/2 pointer-events-none">
+					<div class="absolute left-8 top-1/2 -translate-y-1/2 pointer-events-none z-50">
 						<div class="bg-black/70 backdrop-blur-sm rounded-full p-4 animate-fade-out">
 							<SkipBack class="h-12 w-12 text-white" />
 							<div class="text-white text-center mt-2 font-semibold">-10s</div>
@@ -670,7 +715,7 @@
 				{/if}
 				
 				{#if showSeekIndicator === 'forward'}
-					<div class="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none">
+					<div class="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none z-50">
 						<div class="bg-black/70 backdrop-blur-sm rounded-full p-4 animate-fade-out">
 							<SkipForward class="h-12 w-12 text-white" />
 							<div class="text-white text-center mt-2 font-semibold">+10s</div>
@@ -696,7 +741,7 @@
 		class="absolute right-0 -bottom-12 z-40 rounded-lg bg-black/80 p-3 text-white backdrop-blur-sm transition-all hover:bg-black
 			{isFullscreen ? 'opacity-0 hover:opacity-100' : 'opacity-100'}"
 		class:fullscreen-button-hidden={isFullscreen && !showFullscreenButton}
-		title="Toggle Fullscreen"
+		title="Toggle Fullscreen (or press F)"
 		aria-label="Toggle Fullscreen"
 	>
 		{#if isFullscreen}

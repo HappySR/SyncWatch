@@ -17,7 +17,28 @@
 	let isCreating = $state(false);
 	let loadingTimeout: any;
 
+	// Force refresh tracking
+	const DASHBOARD_VISITED_KEY = 'dashboard_visited_at';
+	const FORCE_REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
 	onMount(async () => {
+		// Force refresh logic
+		const lastVisit = sessionStorage.getItem(DASHBOARD_VISITED_KEY);
+		const now = Date.now();
+
+		if (lastVisit) {
+			const timeSinceLastVisit = now - parseInt(lastVisit, 10);
+			if (timeSinceLastVisit > FORCE_REFRESH_INTERVAL) {
+				console.log('🔄 Force refreshing dashboard (last visit was', timeSinceLastVisit / 1000, 'seconds ago)');
+				sessionStorage.setItem(DASHBOARD_VISITED_KEY, now.toString());
+				window.location.reload();
+				return;
+			}
+		} else {
+			// First visit in this session
+			sessionStorage.setItem(DASHBOARD_VISITED_KEY, now.toString());
+		}
+
 		// Check authentication
 		if (!authStore.user) {
 			goto('/');
@@ -30,7 +51,7 @@
 				error = 'Loading is taking longer than expected. Please refresh the page.';
 				loading = false;
 			}
-		}, 10000); // 10 second timeout
+		}, 10000);
 
 		try {
 			await loadRooms();
@@ -55,12 +76,7 @@
 
 		const { data, error: fetchError } = await supabase
 			.from('room_members')
-			.select(
-				`
-        room_id,
-        rooms (*)
-      `
-			)
+			.select('room_id, rooms (*)')
 			.eq('user_id', authStore.user.id)
 			.throwOnError();
 
@@ -82,8 +98,8 @@
 			showCreateModal = false;
 			newRoomName = '';
 			goto(`/room/${roomId}`);
-		} catch (error) {
-			console.error('Failed to create room:', error);
+		} catch (err: any) {
+			console.error('Failed to create room:', err);
 			alert('Failed to create room. Please try again.');
 		} finally {
 			isCreating = false;
@@ -98,17 +114,16 @@
 			return;
 		}
 
-		// Prevent multiple simultaneous requests, but allow retry
 		if (isJoining) {
-			console.log('Join already in progress, ignoring duplicate request');
+			console.log('Join already in progress');
 			return;
 		}
 
 		isJoining = true;
-		console.log('🚀 Starting join room from dashboard:', trimmedId);
+		console.log('🚀 Joining room:', trimmedId);
 
 		try {
-			// First check if room exists
+			// Check if room exists
 			const { data: room, error: roomError } = await supabase
 				.from('rooms')
 				.select('id, name, is_public')
@@ -116,7 +131,6 @@
 				.single();
 
 			if (roomError || !room) {
-				console.error('❌ Room not found:', roomError);
 				alert('Room not found. Please check the room ID and try again.');
 				return;
 			}
@@ -126,43 +140,29 @@
 				return;
 			}
 
-			console.log('✅ Room found, attempting to join...');
-
-			// Try to join the room with timeout
+			// Join with timeout
 			const joinPromise = roomStore.joinRoom(trimmedId);
-			const timeoutPromise = new Promise((_, reject) => {
-				setTimeout(() => reject(new Error('Join timeout after 20 seconds')), 20000);
-			});
+			const timeoutPromise = new Promise((_, reject) => 
+				setTimeout(() => reject(new Error('Join timeout')), 20000)
+			);
 
 			await Promise.race([joinPromise, timeoutPromise]);
 
-			console.log('✅ Join successful, navigating to room...');
-
-			// Small delay to ensure state is updated
+			// Navigate after small delay
 			await new Promise((resolve) => setTimeout(resolve, 300));
-
-			// Clear input and navigate
 			joinRoomId = '';
 			goto(`/room/${trimmedId}`);
-		} catch (error: any) {
-			console.error('❌ Join room error:', error);
+		} catch (err: any) {
+			console.error('❌ Join error:', err);
 
-			// Better error messages
-			let errorMessage = 'Failed to join room. ';
-			if (error.message?.includes('timeout')) {
-				errorMessage += 'Connection timed out. Please check your internet and try again.';
-			} else if (error.message?.includes('row-level security')) {
-				errorMessage += 'You may not have permission to join this room.';
-			} else if (error.message) {
-				errorMessage += error.message;
-			} else {
-				errorMessage += 'Please try again.';
-			}
+			const errorMessage = err.message?.includes('timeout')
+				? 'Connection timed out. Please check your internet and try again.'
+				: err.message?.includes('row-level security')
+				? 'You may not have permission to join this room.'
+				: 'Failed to join room. Please try again.';
 
 			alert(errorMessage);
 		} finally {
-			// ALWAYS reset the joining state, even on error
-			console.log('🔄 Resetting join state');
 			isJoining = false;
 		}
 	}
@@ -179,14 +179,21 @@
 		error = null;
 		loading = true;
 		loadRooms()
-			.then(() => {
-				loading = false;
-			})
 			.catch((err) => {
 				console.error('Retry failed:', err);
 				error = 'Failed to load rooms. Please try again.';
+			})
+			.finally(() => {
 				loading = false;
 			});
+	}
+
+	function handleCreateKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && !isCreating) createRoom();
+	}
+
+	function handleJoinKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && !isJoining) joinRoom();
 	}
 </script>
 
@@ -204,26 +211,31 @@
 		<button
 			onclick={() => (showCreateModal = true)}
 			class="bg-primary flex transform items-center justify-center gap-3 rounded-xl p-6 text-white transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
+			aria-label="Create new room"
 		>
 			<Plus class="h-6 w-6" />
 			<span class="text-lg font-semibold">Create New Room</span>
 		</button>
 
 		<div class="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
-			<div class="mb-2 text-sm text-white/80">Join with Room ID</div>
+			<label for="join-room-input" class="mb-2 block text-sm text-white/80">
+				Join with Room ID
+			</label>
 			<div class="flex gap-2">
 				<input
+					id="join-room-input"
 					type="text"
 					bind:value={joinRoomId}
 					placeholder="Enter room ID"
 					disabled={isJoining}
 					class="flex-1 rounded-lg border border-white/20 bg-black/30 px-4 py-2 text-sm text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
-					onkeydown={(e) => e.key === 'Enter' && !isJoining && joinRoom()}
+					onkeydown={handleJoinKeydown}
 				/>
 				<button
 					onclick={joinRoom}
 					disabled={isJoining || !joinRoomId.trim()}
 					class="bg-primary flex items-center gap-2 rounded-lg px-4 py-2 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6 sm:text-base"
+					aria-label="Join room"
 				>
 					{#if isJoining}
 						<Loader class="h-4 w-4 animate-spin" />
@@ -259,6 +271,7 @@
 				<button
 					onclick={retryLoading}
 					class="rounded-lg bg-red-500 px-6 py-2 text-white transition hover:bg-red-600"
+					aria-label="Retry loading rooms"
 				>
 					Retry
 				</button>
@@ -270,21 +283,18 @@
 			</div>
 		{:else}
 			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-				{#each rooms as room}
+				{#each rooms as room (room.id)}
 					<a
 						href="/room/{room.id}"
 						class="group rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-purple-500/50"
+						aria-label="Join room {room.name}"
 					>
 						<div class="mb-4 flex items-start justify-between">
-							<h3
-								class="wrap-break-words text-lg font-semibold text-white transition group-hover:text-purple-400"
-							>
+							<h3 class="wrap-break-words text-lg font-semibold text-white transition group-hover:text-purple-400">
 								{room.name}
 							</h3>
 							{#if room.is_playing}
-								<div
-									class="ml-2 rounded bg-green-500/20 px-2 py-1 text-xs whitespace-nowrap text-green-400"
-								>
+								<div class="ml-2 whitespace-nowrap rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
 									Live
 								</div>
 							{/if}
@@ -310,17 +320,39 @@
 </div>
 
 {#if showCreateModal}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+	<div 
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+		onclick={(e) => {
+			if (e.target === e.currentTarget && !isCreating) {
+				showCreateModal = false;
+				newRoomName = '';
+			}
+		}}
+		onkeydown={(e) => {
+			if (e.key === 'Escape' && !isCreating) {
+				showCreateModal = false;
+				newRoomName = '';
+			}
+		}}
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="create-room-title"
+		tabindex="-1"
+	>
 		<div class="w-full max-w-md rounded-2xl border border-white/10 bg-slate-800 p-8">
-			<h2 class="mb-4 text-2xl font-bold text-white">Create New Room</h2>
+			<h2 id="create-room-title" class="mb-4 text-2xl font-bold text-white">
+				Create New Room
+			</h2>
 
+			<label for="room-name-input" class="sr-only">Room name</label>
 			<input
+				id="room-name-input"
 				type="text"
 				bind:value={newRoomName}
 				placeholder="Enter room name"
 				disabled={isCreating}
 				class="mb-6 w-full rounded-lg border border-white/20 bg-black/30 px-4 py-3 text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-				onkeydown={(e) => e.key === 'Enter' && !isCreating && createRoom()}
+				onkeydown={handleCreateKeydown}
 			/>
 
 			<div class="flex gap-3">
