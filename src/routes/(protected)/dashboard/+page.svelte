@@ -247,7 +247,7 @@
 			</div>
 			{#if isJoining}
 				<div class="mt-2 text-xs text-yellow-400">
-					Connecting to room... This may take up to 20 seconds.
+					Connecting to room... This may take up to 20 seconds. If it takes longer, please refresh the page and try again.
 				</div>
 			{/if}
 		</div>
