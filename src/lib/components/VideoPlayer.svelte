@@ -711,7 +711,7 @@
 					<div class="absolute left-8 top-1/2 -translate-y-1/2 pointer-events-none z-50">
 						<div class="bg-black/70 backdrop-blur-sm rounded-full p-4 animate-fade-out">
 							<SkipBack class="h-12 w-12 text-white" />
-							<div class="text-white text-center mt-2 font-semibold">-10s</div>
+							<!-- <div class="text-white text-center mt-2 font-semibold">-10s</div> -->
 						</div>
 					</div>
 				{/if}
@@ -720,7 +720,7 @@
 					<div class="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none z-50">
 						<div class="bg-black/70 backdrop-blur-sm rounded-full p-4 animate-fade-out">
 							<SkipForward class="h-12 w-12 text-white" />
-							<div class="text-white text-center mt-2 font-semibold">+10s</div>
+							<!-- <div class="text-white text-center mt-2 font-semibold">+10s</div> -->
 						</div>
 					</div>
 				{/if}
