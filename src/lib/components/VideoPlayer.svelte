@@ -114,7 +114,8 @@
 	async function handleKeyboardSeek(amount: number) {
 		if (!videoElement || !isDirectVideoReady || !playerStore.canControl()) return;
 
-		const newTime = Math.max(0, Math.min(videoElement.duration, videoElement.currentTime + amount));
+		const currentVideoTime = videoElement.currentTime;
+		const newTime = Math.max(0, Math.min(videoElement.duration, currentVideoTime + amount));
 		
 		// Show indicator
 		showSeekIndicator = amount > 0 ? 'forward' : 'backward';
@@ -159,9 +160,10 @@
 	}
 
 	async function handleDoubleTapSeek(amount: number) {
-		if (!videoElement || !isDirectVideoReady) return;
+		if (!videoElement || !isDirectVideoReady || !playerStore.canControl()) return;
 
-		const newTime = Math.max(0, Math.min(videoElement.duration, videoElement.currentTime + amount));
+		const currentVideoTime = videoElement.currentTime;
+		const newTime = Math.max(0, Math.min(videoElement.duration, currentVideoTime + amount));
 		
 		// Show indicator
 		showSeekIndicator = amount > 0 ? 'forward' : 'backward';

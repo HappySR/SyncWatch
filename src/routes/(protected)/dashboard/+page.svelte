@@ -221,20 +221,20 @@
 			<label for="join-room-input" class="mb-2 block text-sm text-white/80">
 				Join with Room ID
 			</label>
-			<div class="flex flex-col gap-2 sm:flex-row">
+			<div class="flex flex-col gap-2 sm:flex-row sm:items-stretch">
 				<input
 					id="join-room-input"
 					type="text"
 					bind:value={joinRoomId}
 					placeholder="Enter room ID"
 					disabled={isJoining}
-					class="w-full rounded-lg border border-white/20 bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:flex-1 sm:text-base"
+					class="w-full min-w-0 rounded-lg border border-white/20 bg-black/30 px-3 py-2.5 text-sm text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:flex-1 sm:px-4"
 					onkeydown={handleJoinKeydown}
 				/>
 				<button
 					onclick={joinRoom}
 					disabled={isJoining || !joinRoomId.trim()}
-					class="bg-primary flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-6 sm:text-base"
+					class="bg-primary flex w-full shrink-0 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-30"
 					aria-label="Join room"
 				>
 					{#if isJoining}
