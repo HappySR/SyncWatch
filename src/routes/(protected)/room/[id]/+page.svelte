@@ -97,6 +97,11 @@
 	});
 
 	onDestroy(() => {
+		// Pause any playing video before leaving
+		if (playerStore.isPlaying) {
+			playerStore.pause();
+		}
+		
 		roomStore.leaveRoom();
 		playerStore.cleanup();
 	});

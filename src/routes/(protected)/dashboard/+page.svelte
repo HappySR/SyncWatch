@@ -210,38 +210,38 @@
 	<div class="mb-12 grid gap-4 sm:grid-cols-2">
 		<button
 			onclick={() => (showCreateModal = true)}
-			class="bg-primary flex transform items-center justify-center gap-3 rounded-xl p-6 text-white transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
+			class="bg-primary flex transform items-center justify-center gap-2 sm:gap-3 rounded-xl p-4 sm:p-6 text-white transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
 			aria-label="Create new room"
 		>
-			<Plus class="h-6 w-6" />
-			<span class="text-lg font-semibold">Create New Room</span>
+			<Plus class="h-5 w-5 sm:h-6 sm:w-6" />
+			<span class="text-base sm:text-lg font-semibold">Create New Room</span>
 		</button>
 
-		<div class="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
+		<div class="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 backdrop-blur-sm">
 			<label for="join-room-input" class="mb-2 block text-sm text-white/80">
 				Join with Room ID
 			</label>
-			<div class="flex gap-2">
+			<div class="flex flex-col gap-2 sm:flex-row">
 				<input
 					id="join-room-input"
 					type="text"
 					bind:value={joinRoomId}
 					placeholder="Enter room ID"
 					disabled={isJoining}
-					class="flex-1 rounded-lg border border-white/20 bg-black/30 px-4 py-2 text-sm text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
+					class="w-full rounded-lg border border-white/20 bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/40 focus:border-purple-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 sm:flex-1 sm:text-base"
 					onkeydown={handleJoinKeydown}
 				/>
 				<button
 					onclick={joinRoom}
 					disabled={isJoining || !joinRoomId.trim()}
-					class="bg-primary flex items-center gap-2 rounded-lg px-4 py-2 text-sm text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6 sm:text-base"
+					class="bg-primary flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-6 sm:text-base"
 					aria-label="Join room"
 				>
 					{#if isJoining}
 						<Loader class="h-4 w-4 animate-spin" />
-						<span class="hidden sm:inline">Joining...</span>
+						<span>Joining...</span>
 					{:else}
-						Join
+						<span>Join Room</span>
 					{/if}
 				</button>
 			</div>
