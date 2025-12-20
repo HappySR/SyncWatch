@@ -39,6 +39,8 @@
 	let isUserSeeking = false; // Track user-initiated seeks
 	let pendingSeekTime: number | null = null;
 	let seekDebounceTimeout: any = null;
+	let hasUserInteracted = $state(false);
+	let pendingPlayRequest = $state(false);
 
 	onMount(() => {
 		loadYouTubeAPI();
@@ -323,8 +325,16 @@
 		console.log('🎬 Initializing direct video player');
 		isVideoLoading = true;
 		isDirectVideoReady = false;
+		hasUserInteracted = false;
+		pendingPlayRequest = false;
 
+		// Set video source
 		videoElement.src = videoUrl;
+		
+		// Optimize loading with preload hint
+		videoElement.preload = 'auto';
+		
+		// Start loading
 		videoElement.load();
 	}
 
@@ -396,18 +406,32 @@
 
 			if (isPlaying && isPaused && !isUserSeeking) {
 				console.log('▶️ Starting direct video playback');
-				const playPromise = videoElement.play();
-				if (playPromise !== undefined) {
-					playPromise.catch((e) => {
-						console.log('Autoplay prevented, waiting for user interaction:', e);
-					});
-				}
+				attemptVideoPlay();
 			} else if (!isPlaying && !isPaused) {
 				console.log('⏸️ Pausing direct video playback');
 				videoElement.pause();
 			}
 		} catch (e) {
 			console.log('Sync error:', e);
+		}
+	}
+
+	async function attemptVideoPlay() {
+		if (!videoElement) return;
+
+		try {
+			await videoElement.play();
+			hasUserInteracted = true;
+			pendingPlayRequest = false;
+			console.log('✅ Video playback started successfully');
+		} catch (error: any) {
+			if (error.name === 'NotAllowedError' || error.name === 'AbortError') {
+				console.log('⏸️ Autoplay blocked - waiting for user interaction');
+				pendingPlayRequest = true;
+				// Don't throw error, just wait for user interaction
+			} else {
+				console.error('❌ Play error:', error);
+			}
 		}
 	}
 
@@ -459,6 +483,9 @@
 
 	function handleDirectVideoPlay() {
 		if (playerStore.isSyncing || !isDirectVideoReady || isUserSeeking) return;
+
+		hasUserInteracted = true;
+		pendingPlayRequest = false;
 
 		if (!isPlaying && videoElement) {
 			const videoTime = videoElement.currentTime;
@@ -513,20 +540,50 @@
 
 	function handleDirectVideoCanPlay() {
 		isVideoLoading = false;
+		
+		// If there's a pending play request, try again
+		if (pendingPlayRequest && isPlaying) {
+			console.log('🔄 Retrying play after canplay event');
+			attemptVideoPlay();
+		}
 	}
 
 	function handleDirectVideoError(e: Event) {
-		console.error('❌ Direct video error:', e);
-		isVideoLoading = false;
+		if (!videoElement) return;
 		
-		// Don't show alert for common network errors during seeking
-		if (videoElement?.error?.code === MediaError.MEDIA_ERR_NETWORK && isUserSeeking) {
-			console.log('Network error during seek, will retry...');
+		const error = videoElement.error;
+		console.error('❌ Direct video error:', e, error);
+		
+		// Ignore network errors during seeking - they're usually temporary
+		if (error?.code === MediaError.MEDIA_ERR_NETWORK && isUserSeeking) {
+			console.log('⚠️ Network error during seek, ignoring...');
 			isUserSeeking = false;
 			return;
 		}
 		
-		alert('Failed to load video. Please check the URL and try again.');
+		// Ignore decode errors if video is still loading
+		if (error?.code === MediaError.MEDIA_ERR_DECODE && isVideoLoading) {
+			console.log('⚠️ Decode error during loading, ignoring...');
+			return;
+		}
+		
+		// Only show alert for critical errors
+		if (error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+			isVideoLoading = false;
+			alert('Video format not supported. Please use MP4, WebM, or OGG format.');
+		} else if (error?.code === MediaError.MEDIA_ERR_ABORTED) {
+			// User aborted, don't show error
+			console.log('ℹ️ Video loading aborted by user');
+		}
+	}
+
+	// Handle user interaction to enable autoplay
+	function handleUserInteraction() {
+		hasUserInteracted = true;
+		if (pendingPlayRequest && videoElement && isPlaying) {
+			console.log('👆 User interacted - attempting delayed play');
+			attemptVideoPlay();
+		}
 	}
 </script>
 
@@ -556,8 +613,12 @@
 				role="button"
 				tabindex="0"
 				aria-label="Video player with double-tap seek support"
-				onclick={handleVideoClick}
+				onclick={(e) => {
+					handleUserInteraction();
+					handleVideoClick(e);
+				}}
 				onkeydown={(e) => {
+					handleUserInteraction();
 					if (e.key === 'ArrowLeft') {
 						handleDoubleTapSeek(-10);
 					} else if (e.key === 'ArrowRight') {
@@ -569,7 +630,7 @@
 					bind:this={videoElement}
 					class="h-full w-full"
 					controls
-					preload="metadata"
+					preload="auto"
 					onloadedmetadata={handleDirectVideoLoadedMetadata}
 					onplay={handleDirectVideoPlay}
 					onpause={handleDirectVideoPause}
@@ -578,9 +639,25 @@
 					onwaiting={handleDirectVideoWaiting}
 					oncanplay={handleDirectVideoCanPlay}
 					onerror={handleDirectVideoError}
+					onclick={handleUserInteraction}
 				>
 					<track kind="captions" />
 				</video>
+
+				<!-- Autoplay Blocked Notice -->
+				{#if pendingPlayRequest && !hasUserInteracted}
+					<div class="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+						<button
+							onclick={handleUserInteraction}
+							class="bg-primary hover:bg-primary/90 flex items-center gap-2 rounded-lg px-6 py-3 text-white transition"
+						>
+							<svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+								<path d="M8 5v14l11-7z"/>
+							</svg>
+							<span>Click to Play Video</span>
+						</button>
+					</div>
+				{/if}
 
 				<!-- Double Tap Seek Indicators -->
 				{#if showSeekIndicator === 'backward'}
