@@ -27,7 +27,7 @@
 	} from 'agora-rtc-sdk-ng';
 	import { PUBLIC_AGORA_APP_ID } from '$env/static/public';
 
-	let { isFullscreen = false } = $props<{ isFullscreen?: boolean }>();
+	// let { isFullscreen = false } = $props<{ isFullscreen?: boolean }>();
 
 	interface CallInvitation {
 		from: string;
@@ -57,7 +57,6 @@
 	// UI states - DEFAULT OFF
 	let isMuted = $state(true);
 	let isVideoOff = $state(true);
-	let wasMinimizedBeforeFullscreen = $state(false);
 	let isSharingScreen = $state(false);
 	let showSettings = $state(false);
 	let localVideoContainer: HTMLDivElement | undefined = $state(undefined);
@@ -406,22 +405,6 @@
 		}
 		expandedVideos = new Set(expandedVideos);
 	}
-
-	// Auto-expand video call when entering fullscreen
-	$effect(() => {
-		if (isInCall) {
-			if (isFullscreen) {
-				// Save minimized state
-				wasMinimizedBeforeFullscreen = isMinimized;
-				// Always expand when entering fullscreen
-				isMinimized = false;
-			} else if (wasMinimizedBeforeFullscreen) {
-				// Restore previous minimized state when exiting fullscreen
-				isMinimized = true;
-				wasMinimizedBeforeFullscreen = false;
-			}
-		}
-	});
 </script>
 
 <!-- Incoming Call Notification -->
@@ -434,13 +417,11 @@
 {/if}
 
 {#if isInCall}
-	<!-- FULLSCREEN MODE: Fixed overlay that persists -->
-	{#if isFullscreen}
-		<!-- Always render video call in fullscreen, z-index above video player -->
-		<div
-			class="fixed transition-all duration-300"
-			class:minimized={isMinimized}
-			style={isMinimized
+	<!-- Video call overlay - always rendered when in call -->
+	<div
+		class="fixed transition-all duration-300"
+		class:minimized={isMinimized}
+		style={isMinimized
 				? 'right: 20px; bottom: 20px; width: auto; height: auto; z-index: 10000;'
 				: 'right: 20px; bottom: 80px; width: 400px; max-height: 80vh; z-index: 10000;'}
 		>
@@ -650,132 +631,6 @@
 				<div bind:this={localVideoContainer}></div>
 			</div>
 		</div>
-	{:else}
-		<!-- NON-FULLSCREEN MODE: Normal chat panel view -->
-		<div class="space-y-3">
-			<div class="text-text-secondary flex items-center justify-between text-center text-sm">
-				<span class="flex items-center gap-2">
-					<Users class="h-4 w-4" />
-					Video Call Active ({remoteUsers.size + 1})
-				</span>
-				<button
-					onclick={endCall}
-					class="rounded bg-red-500/10 px-3 py-1 text-sm font-medium text-red-400 transition hover:bg-red-500/20 hover:text-red-300"
-				>
-					End Call
-				</button>
-			</div>
-
-			<div class="border-border overflow-hidden rounded-xl border bg-black" style="height: 400px;">
-				<div class="h-full overflow-y-auto p-2">
-					<div class="grid grid-cols-2 gap-2">
-						<div class="relative h-48 overflow-hidden rounded-lg bg-gray-900">
-							<div bind:this={localVideoContainer} class="h-full w-full"></div>
-							<div
-								class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
-							>
-								You {isVideoOff ? '(Video Off)' : ''}
-							</div>
-						</div>
-
-						{#each Array.from(remoteUsers.values()) as user (user.uid)}
-							<div class="relative h-48 overflow-hidden rounded-lg bg-gray-900">
-								<div id="remote-video-{user.uid}" class="h-full w-full"></div>
-								<div
-									class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
-								>
-									{user.displayName || `User ${user.uid}`}
-								</div>
-							</div>
-						{/each}
-					</div>
-				</div>
-			</div>
-
-			<!-- Controls -->
-			<div class="flex items-center justify-center gap-2">
-				<button
-					onclick={toggleMute}
-					class="rounded-lg p-2 transition {isMuted
-						? 'bg-red-500 hover:bg-red-600'
-						: 'bg-surface-hover hover:bg-surface'} text-white"
-				>
-					{#if isMuted}
-						<MicOff class="h-4 w-4" />
-					{:else}
-						<Mic class="h-4 w-4" />
-					{/if}
-				</button>
-
-				<button
-					onclick={toggleVideo}
-					class="rounded-lg p-2 transition {isVideoOff
-						? 'bg-red-500 hover:bg-red-600'
-						: 'bg-surface-hover hover:bg-surface'} text-white"
-				>
-					{#if isVideoOff}
-						<VideoOff class="h-4 w-4" />
-					{:else}
-						<Video class="h-4 w-4" />
-					{/if}
-				</button>
-
-				<button
-					onclick={toggleScreenShare}
-					class="rounded-lg p-2 transition {isSharingScreen
-						? 'bg-primary hover:bg-primary/90'
-						: 'bg-surface-hover hover:bg-surface'} text-white"
-				>
-					{#if isSharingScreen}
-						<MonitorOff class="h-4 w-4" />
-					{:else}
-						<Monitor class="h-4 w-4" />
-					{/if}
-				</button>
-
-				<button
-					onclick={toggleSettings}
-					class="bg-surface-hover hover:bg-surface rounded-lg p-2 text-white transition"
-				>
-					<Settings class="h-4 w-4" />
-				</button>
-			</div>
-
-			<div>
-				<label for="chat-camera" class="text-text-secondary mb-1 block text-xs">Camera</label>
-				<select
-					id="chat-camera"
-					bind:value={selectedCamera}
-					onchange={changeCamera}
-					class="bg-input text-text-primary w-full rounded px-2 py-1 text-sm"
-				>
-					{#each cameras as camera}
-						<option value={camera.deviceId}
-							>{camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}</option
-						>
-					{/each}
-				</select>
-			</div>
-
-			<div>
-				<label for="chat-microphone" class="text-text-secondary mb-1 block text-xs"
-					>Microphone</label
-				>
-				<select
-					id="chat-microphone"
-					bind:value={selectedMicrophone}
-					onchange={changeMicrophone}
-					class="bg-input text-text-primary w-full rounded px-2 py-1 text-sm"
-				>
-					{#each microphones as mic}
-						<option value={mic.deviceId}
-							>{mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}</option
-						>
-					{/each}
-				</select>
-			</div>
-		</div>
-	{/if}
 {:else}
 	<button
 		onclick={startCall}

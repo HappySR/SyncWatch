@@ -176,7 +176,7 @@
 	>
 		<!-- Video Call Section -->
 		<div class="border-border bg-surface-hover/50 shrink-0 border-b p-4">
-			<VideoCallContainer {isFullscreen} />
+			<VideoCallContainer />
 		</div>
 
 		<!-- Chat Header -->

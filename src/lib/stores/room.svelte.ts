@@ -188,15 +188,25 @@ class RoomStore {
 
 			const allMembers = data || [];
 
-			// Preserve online status when reloading
-			const previousOnlineStatus = new Map(this.members.map((m) => [m.user_id, m.is_online]));
+			// Create a map of current members and their online status
+			const existingMembersMap = new Map(
+				this.members.map((m) => [m.user_id, m])
+			);
 
-			this.members = allMembers.map((member) => ({
-				...member,
-				is_online: previousOnlineStatus.get(member.user_id) ?? false
-			}));
+			// Merge new data with existing online status
+			this.members = allMembers.map((member) => {
+				const existingMember = existingMembersMap.get(member.user_id);
+				return {
+					...member,
+					// Preserve online status if member already existed, otherwise false
+					is_online: existingMember?.is_online ?? false
+				};
+			});
 
-			console.log('✅ Loaded room members:', allMembers.length);
+			console.log('✅ Loaded room members:', {
+				total: allMembers.length,
+				online: this.members.filter(m => m.is_online).length
+			});
 		} catch (err: any) {
 			console.error('Failed to load members:', err);
 		}
@@ -311,9 +321,33 @@ class RoomStore {
 					filter: `room_id=eq.${roomId}`
 				},
 				async (payload) => {
-					console.log('✅ New member joined:', payload.new);
-					// Reload members immediately when someone joins
-					await this.loadMembers(roomId);
+					const newMember = payload.new as RoomMember;
+					console.log('✅ New member joined:', newMember.user_id);
+					
+					// Check if member already exists (rejoin case)
+					const existingIndex = this.members.findIndex(m => m.user_id === newMember.user_id);
+					
+					if (existingIndex >= 0) {
+						// Member rejoining - keep them in the list, will be marked online by presence
+						console.log('👤 Member rejoining, keeping in list');
+					} else {
+						// Truly new member - fetch their profile and add
+						const { data: profile } = await supabase
+							.from('profiles')
+							.select('*')
+							.eq('id', newMember.user_id)
+							.single();
+						
+						this.members = [
+							...this.members,
+							{
+								...newMember,
+								profiles: profile,
+								is_online: false // Will be updated by presence
+							}
+						];
+						console.log('👤 New member added to list');
+					}
 				}
 			)
 			.on(
