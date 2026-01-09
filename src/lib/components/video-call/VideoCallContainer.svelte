@@ -27,8 +27,6 @@
 	} from 'agora-rtc-sdk-ng';
 	import { PUBLIC_AGORA_APP_ID } from '$env/static/public';
 
-	// let { isFullscreen = false } = $props<{ isFullscreen?: boolean }>();
-
 	interface CallInvitation {
 		from: string;
 		fromName: string;
@@ -70,22 +68,108 @@
 	// Expanded video states
 	let expandedVideos = $state<Set<string>>(new Set());
 
+	// Visibility and lifecycle tracking - CRITICAL
+	let isPageVisible = $state(true);
+	let visibilityCheckInterval: any = null;
+	let componentMounted = $state(false);
+	let userRequestedEnd = $state(false);
+
 	const channelName = $derived(`syncwatch-${roomStore.currentRoom?.id || 'default'}`);
 	const displayName = $derived(
 		authStore.profile?.display_name || authStore.user?.email?.split('@')[0] || 'Guest'
 	);
 
 	onMount(async () => {
+		componentMounted = true;
+		console.log('📱 VideoCallContainer mounted');
+		
 		setupCallChannel();
 		await loadDevices();
+		setupVisibilityHandling();
 	});
 
-	onDestroy(async () => {
-		await cleanup();
+	onDestroy(() => {
+		console.log('🔴 VideoCallContainer destroy called, userRequestedEnd:', userRequestedEnd);
+		
+		// CRITICAL: Only cleanup if user explicitly ended call or component is truly being destroyed
+		// NOT on tab switch, fullscreen, or page visibility changes
+		componentMounted = false;
+		
 		if (callChannel) {
 			supabase.removeChannel(callChannel);
+			callChannel = null;
+		}
+		
+		if (visibilityCheckInterval) {
+			clearInterval(visibilityCheckInterval);
+			visibilityCheckInterval = null;
+		}
+		
+		document.removeEventListener('visibilitychange', handleVisibilityChange);
+		
+		// Only cleanup Agora if user explicitly ended the call
+		if (userRequestedEnd && isInCall) {
+			console.log('🛑 User requested end - cleaning up Agora');
+			cleanupAgora();
+		} else if (isInCall) {
+			console.log('⚠️ Component destroyed but call active - NOT cleaning up Agora');
 		}
 	});
+
+	// CRITICAL FIX: Separate Agora cleanup from component cleanup
+	async function cleanupAgora() {
+		console.log('🧹 Cleaning up Agora resources');
+		
+		try {
+			if (localAudioTrack) {
+				localAudioTrack.close();
+				localAudioTrack = null;
+			}
+			
+			if (localVideoTrack) {
+				localVideoTrack.close();
+				localVideoTrack = null;
+			}
+
+			if (agoraClient) {
+				await agoraClient.leave();
+				agoraClient.removeAllListeners();
+				agoraClient = null;
+			}
+
+			remoteUsers.clear();
+			remoteUsers = new Map();
+		} catch (error) {
+			console.error('Error during Agora cleanup:', error);
+		}
+	}
+
+	function setupVisibilityHandling() {
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+		
+		// Periodic health check - keep connection alive
+		visibilityCheckInterval = setInterval(() => {
+			if (!isInCall || !agoraClient) return;
+			
+			const connectionState = agoraClient.connectionState;
+			
+			if (connectionState === 'DISCONNECTED' || connectionState === 'DISCONNECTING') {
+				console.warn('⚠️ Agora disconnected, state:', connectionState);
+			} else if (connectionState === 'CONNECTED') {
+				// Connection is healthy
+			}
+		}, 5000);
+	}
+
+	function handleVisibilityChange() {
+		isPageVisible = !document.hidden;
+		
+		if (isPageVisible && isInCall) {
+			console.log('✅ Page visible - call continues');
+		} else if (!isPageVisible && isInCall) {
+			console.log('👁️ Page hidden - keeping call alive in background');
+		}
+	}
 
 	async function loadDevices() {
 		try {
@@ -177,21 +261,31 @@
 	async function joinCall() {
 		if (isInCall || isLoading) return;
 
+		console.log('🎬 Starting video call...');
 		isInCall = true;
 		isLoading = true;
 		incomingCall = null;
+		userRequestedEnd = false; // Reset flag
 
 		try {
 			agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
+			// Event handlers
 			agoraClient.on('user-published', handleUserPublished);
 			agoraClient.on('user-unpublished', handleUserUnpublished);
 			agoraClient.on('user-left', handleUserLeft);
+			
+			// Connection state monitoring
+			agoraClient.on('connection-state-change', (curState, prevState) => {
+				console.log(`🔄 Connection: ${prevState} → ${curState}`);
+			});
 
 			const numericUid = Math.floor(Math.random() * 1000000);
 			const token = await getAgoraToken(channelName, String(numericUid));
 
+			console.log('🔗 Joining Agora channel:', channelName);
 			const uid = await agoraClient.join(PUBLIC_AGORA_APP_ID, channelName, token, numericUid);
+			console.log('✅ Joined with UID:', uid);
 
 			[localAudioTrack, localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
 				{
@@ -204,11 +298,11 @@
 				}
 			);
 
-
-			// Publish tracks first (must be enabled to publish)
+			console.log('📹 Publishing tracks...');
 			await agoraClient.publish([localAudioTrack, localVideoTrack]);
+			console.log('✅ Tracks published');
 
-			// NOW disable them after publishing
+			// Disable by default
 			await localAudioTrack.setEnabled(false);
 			await localVideoTrack.setEnabled(false);
 			isMuted = true;
@@ -230,12 +324,14 @@
 			}
 
 			isLoading = false;
+			console.log('🎉 Video call started successfully');
 		} catch (error: any) {
 			console.error('❌ Error joining call:', error);
 			alert(`Failed to join call: ${error.message}. Please try again.`);
-			await cleanup();
+			await cleanupAgora();
 			isInCall = false;
 			isLoading = false;
+			userRequestedEnd = true;
 		}
 	}
 
@@ -367,26 +463,13 @@
 	}
 
 	async function endCall() {
-		await cleanup();
+		console.log('🛑 User clicked End Call');
+		userRequestedEnd = true;
+		await cleanupAgora();
 		isInCall = false;
 		isMinimized = false;
 		isLoading = false;
 		expandedVideos = new Set();
-	}
-
-	async function cleanup() {
-		localAudioTrack?.close();
-		localVideoTrack?.close();
-		localAudioTrack = null;
-		localVideoTrack = null;
-
-		if (agoraClient) {
-			await agoraClient.leave();
-			agoraClient = null;
-		}
-
-		remoteUsers.clear();
-		remoteUsers = new Map();
 	}
 
 	function toggleMinimize() {
@@ -417,244 +500,226 @@
 {/if}
 
 {#if isInCall}
-	<!-- Video call overlay - always rendered when in call -->
+	<!-- Video call overlay - FIXED BOTTOM RIGHT POSITION -->
 	<div
-		class="fixed transition-all duration-300"
-		class:minimized={isMinimized}
+		class="fixed z-[10000] transition-all duration-300"
 		style={isMinimized
-				? 'right: 20px; bottom: 20px; width: auto; height: auto; z-index: 10000;'
-				: 'right: 20px; bottom: 80px; width: 400px; max-height: 80vh; z-index: 10000;'}
+			? 'right: 16px; bottom: 16px; width: auto; height: auto;'
+			: 'right: 16px; bottom: 16px; width: 400px; max-height: 85vh;'}
+	>
+		<!-- Expanded Video Call Panel -->
+		<div
+			class="flex flex-col overflow-hidden rounded-xl border-2 border-white/20 bg-black shadow-2xl"
+			style="max-height: 85vh; display: {isMinimized ? 'none' : 'flex'};"
 		>
-			<!-- Video call content - only show if expanded -->
-			<div
-				class="flex flex-col overflow-hidden rounded-xl border-2 border-white/20 bg-black shadow-2xl"
-				style="max-height: 80vh; display: {isMinimized ? 'none' : 'flex'};"
-			>
-				<!-- Header -->
-				<div
-					class="flex items-center justify-between border-b border-white/10 bg-black/90 px-3 py-2"
-				>
-					<span class="flex items-center gap-2 text-sm font-medium text-white">
-						<Users class="h-4 w-4" />
-						Video Call ({remoteUsers.size + 1})
-					</span>
-					<div class="flex gap-2">
+			<!-- Header -->
+			<div class="flex items-center justify-between border-b border-white/10 bg-black/90 px-3 py-2">
+				<span class="flex items-center gap-2 text-sm font-medium text-white">
+					<Users class="h-4 w-4" />
+					Video Call ({remoteUsers.size + 1})
+				</span>
+				<div class="flex gap-2">
+					<button
+						onclick={toggleSettings}
+						class="rounded p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
+						title="Settings"
+					>
+						<Settings class="h-4 w-4" />
+					</button>
+					<button
+						onclick={toggleMinimize}
+						class="rounded p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
+						title="Minimize"
+					>
+						<Minimize2 class="h-4 w-4" />
+					</button>
+					<button
+						onclick={endCall}
+						class="rounded p-1 text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
+						title="End call"
+					>
+						<X class="h-4 w-4" />
+					</button>
+				</div>
+			</div>
+
+			<!-- Video Grid - Scrollable -->
+			<div class="overflow-y-auto bg-black p-2" style="max-height: calc(85vh - 120px);">
+				<div class="space-y-2">
+					<!-- Local Video -->
+					<div
+						class="relative overflow-hidden rounded-lg bg-gray-900 transition-all"
+						class:expanded={expandedVideos.has('local')}
+						style={expandedVideos.has('local') ? 'height: 400px;' : 'height: 150px;'}
+					>
+						<div bind:this={localVideoContainer} class="h-full w-full"></div>
+						<div class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
+							You {isVideoOff ? '(Video Off)' : ''}
+						</div>
 						<button
-							onclick={toggleSettings}
-							class="rounded p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
-							title="Settings"
+							onclick={() => toggleExpandVideo('local')}
+							class="absolute top-2 right-2 rounded bg-black/60 p-1 text-white/80 transition hover:bg-black/80 hover:text-white"
+							title={expandedVideos.has('local') ? 'Minimize' : 'Maximize'}
 						>
-							<Settings class="h-4 w-4" />
-						</button>
-						<button
-							onclick={toggleMinimize}
-							class="rounded p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
-							title="Minimize"
-						>
-							<Minimize2 class="h-4 w-4" />
-						</button>
-						<button
-							onclick={endCall}
-							class="rounded p-1 text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
-							title="End call"
-						>
-							<X class="h-4 w-4" />
+							{#if expandedVideos.has('local')}
+								<Minimize2 class="h-3 w-3" />
+							{:else}
+								<Maximize2 class="h-3 w-3" />
+							{/if}
 						</button>
 					</div>
-				</div>
 
-				<!-- Video Grid - Scrollable -->
-				<div class="overflow-y-auto bg-black p-2" style="max-height: calc(80vh - 120px);">
-					<div class="space-y-2">
-						<!-- Local Video -->
+					<!-- Remote Videos -->
+					{#each Array.from(remoteUsers.values()) as user (user.uid)}
 						<div
 							class="relative overflow-hidden rounded-lg bg-gray-900 transition-all"
-							class:expanded={expandedVideos.has('local')}
-							style={expandedVideos.has('local') ? 'height: 400px;' : 'height: 150px;'}
+							class:expanded={expandedVideos.has(user.uid)}
+							style={expandedVideos.has(user.uid) ? 'height: 400px;' : 'height: 150px;'}
 						>
-							<div bind:this={localVideoContainer} class="h-full w-full"></div>
-							<div
-								class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
-							>
-								You {isVideoOff ? '(Video Off)' : ''}
+							<div id="remote-video-{user.uid}" class="h-full w-full"></div>
+							<div class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
+								{user.displayName || `User ${user.uid}`}
 							</div>
 							<button
-								onclick={() => toggleExpandVideo('local')}
+								onclick={() => toggleExpandVideo(user.uid)}
 								class="absolute top-2 right-2 rounded bg-black/60 p-1 text-white/80 transition hover:bg-black/80 hover:text-white"
-								title={expandedVideos.has('local') ? 'Minimize' : 'Maximize'}
+								title={expandedVideos.has(user.uid) ? 'Minimize' : 'Maximize'}
 							>
-								{#if expandedVideos.has('local')}
+								{#if expandedVideos.has(user.uid)}
 									<Minimize2 class="h-3 w-3" />
 								{:else}
 									<Maximize2 class="h-3 w-3" />
 								{/if}
 							</button>
 						</div>
-
-						<!-- Remote Videos -->
-						{#each Array.from(remoteUsers.values()) as user (user.uid)}
-							<div
-								class="relative overflow-hidden rounded-lg bg-gray-900 transition-all"
-								class:expanded={expandedVideos.has(user.uid)}
-								style={expandedVideos.has(user.uid) ? 'height: 400px;' : 'height: 150px;'}
-							>
-								<div id="remote-video-{user.uid}" class="h-full w-full"></div>
-								<div
-									class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
-								>
-									{user.displayName || `User ${user.uid}`}
-								</div>
-								<button
-									onclick={() => toggleExpandVideo(user.uid)}
-									class="absolute top-2 right-2 rounded bg-black/60 p-1 text-white/80 transition hover:bg-black/80 hover:text-white"
-									title={expandedVideos.has(user.uid) ? 'Minimize' : 'Maximize'}
-								>
-									{#if expandedVideos.has(user.uid)}
-										<Minimize2 class="h-3 w-3" />
-									{:else}
-										<Maximize2 class="h-3 w-3" />
-									{/if}
-								</button>
-							</div>
-						{/each}
-					</div>
+					{/each}
 				</div>
+			</div>
 
-				<!-- Controls -->
-				<div
-					class="flex items-center justify-center gap-2 border-t border-white/10 bg-black/90 px-4 py-3"
+			<!-- Controls -->
+			<div class="flex items-center justify-center gap-2 border-t border-white/10 bg-black/90 px-4 py-3">
+				<button
+					onclick={toggleMute}
+					class="rounded-full p-3 transition {isMuted
+						? 'bg-red-500 hover:bg-red-600'
+						: 'bg-white/10 hover:bg-white/20'} text-white"
+					title={isMuted ? 'Unmute' : 'Mute'}
 				>
-					<button
-						onclick={toggleMute}
-						class="rounded-full p-3 transition {isMuted
-							? 'bg-red-500 hover:bg-red-600'
-							: 'bg-white/10 hover:bg-white/20'} text-white"
-					>
-						{#if isMuted}
-							<MicOff class="h-5 w-5" />
-						{:else}
-							<Mic class="h-5 w-5" />
-						{/if}
-					</button>
+					{#if isMuted}
+						<MicOff class="h-5 w-5" />
+					{:else}
+						<Mic class="h-5 w-5" />
+					{/if}
+				</button>
 
-					<button
-						onclick={toggleVideo}
-						class="rounded-full p-3 transition {isVideoOff
-							? 'bg-red-500 hover:bg-red-600'
-							: 'bg-white/10 hover:bg-white/20'} text-white"
-					>
-						{#if isVideoOff}
-							<VideoOff class="h-5 w-5" />
-						{:else}
-							<Video class="h-5 w-5" />
-						{/if}
-					</button>
+				<button
+					onclick={toggleVideo}
+					class="rounded-full p-3 transition {isVideoOff
+						? 'bg-red-500 hover:bg-red-600'
+						: 'bg-white/10 hover:bg-white/20'} text-white"
+					title={isVideoOff ? 'Turn on video' : 'Turn off video'}
+				>
+					{#if isVideoOff}
+						<VideoOff class="h-5 w-5" />
+					{:else}
+						<Video class="h-5 w-5" />
+					{/if}
+				</button>
 
-					<button
-						onclick={toggleScreenShare}
-						class="rounded-full p-3 transition {isSharingScreen
-							? 'bg-primary hover:bg-primary/90'
-							: 'bg-white/10 hover:bg-white/20'} text-white"
-					>
-						{#if isSharingScreen}
-							<MonitorOff class="h-5 w-5" />
-						{:else}
-							<Monitor class="h-5 w-5" />
-						{/if}
-					</button>
-				</div>
+				<button
+					onclick={toggleScreenShare}
+					class="rounded-full p-3 transition {isSharingScreen
+						? 'bg-primary hover:bg-primary/90'
+						: 'bg-white/10 hover:bg-white/20'} text-white"
+					title={isSharingScreen ? 'Stop sharing' : 'Share screen'}
+				>
+					{#if isSharingScreen}
+						<MonitorOff class="h-5 w-5" />
+					{:else}
+						<Monitor class="h-5 w-5" />
+					{/if}
+				</button>
+			</div>
 
-				<!-- Settings Panel -->
-				{#if showSettings}
-					<div class="absolute inset-0 z-10 flex items-center justify-center bg-black/95 p-4">
-						<div class="w-full max-w-md space-y-4 rounded-xl bg-gray-900 p-6">
-							<div class="mb-4 flex items-center justify-between">
-								<h3 class="font-semibold text-white">Call Settings</h3>
-								<button onclick={toggleSettings} class="text-white/60 hover:text-white">
-									<X class="h-5 w-5" />
-								</button>
-							</div>
+			<!-- Settings Panel -->
+			{#if showSettings}
+				<div class="absolute inset-0 z-10 flex items-center justify-center bg-black/95 p-4">
+					<div class="w-full max-w-md space-y-4 rounded-xl bg-gray-900 p-6">
+						<div class="mb-4 flex items-center justify-between">
+							<h3 class="font-semibold text-white">Call Settings</h3>
+							<button onclick={toggleSettings} class="text-white/60 hover:text-white">
+								<X class="h-5 w-5" />
+							</button>
+						</div>
 
-							<div>
-								<label for="fullscreen-camera" class="mb-2 block text-sm text-white">Camera</label
-								>
-								<select
-									id="fullscreen-camera"
-									bind:value={selectedCamera}
-									onchange={changeCamera}
-									class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
-								>
-									{#each cameras as camera}
-										<option value={camera.deviceId}
-											>{camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}</option
-										>
-									{/each}
-								</select>
-							</div>
+						<div>
+							<label for="camera-select" class="mb-2 block text-sm text-white">Camera</label>
+							<select
+								id="camera-select"
+								bind:value={selectedCamera}
+								onchange={changeCamera}
+								class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
+							>
+								{#each cameras as camera}
+									<option value={camera.deviceId}>
+										{camera.label || `Camera ${camera.deviceId.slice(0, 8)}`}
+									</option>
+								{/each}
+							</select>
+						</div>
 
-							<div>
-								<label for="fullscreen-microphone" class="mb-2 block text-sm text-white"
-									>Microphone</label
-								>
-								<select
-									id="fullscreen-microphone"
-									bind:value={selectedMicrophone}
-									onchange={changeMicrophone}
-									class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
-								>
-									{#each microphones as mic}
-										<option value={mic.deviceId}
-											>{mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}</option
-										>
-									{/each}
-								</select>
-							</div>
+						<div>
+							<label for="mic-select" class="mb-2 block text-sm text-white">Microphone</label>
+							<select
+								id="mic-select"
+								bind:value={selectedMicrophone}
+								onchange={changeMicrophone}
+								class="w-full rounded-lg bg-gray-800 px-3 py-2 text-sm text-white"
+							>
+								{#each microphones as mic}
+									<option value={mic.deviceId}>
+										{mic.label || `Microphone ${mic.deviceId.slice(0, 8)}`}
+									</option>
+								{/each}
+							</select>
 						</div>
 					</div>
-				{/if}
-			</div>
-
-			<!-- Minimized Button (only show when actually minimized) -->
-			{#if isMinimized}
-				<button
-					onclick={toggleMinimize}
-					class="flex items-center gap-2 rounded-full border-2 border-white/20 bg-green-500 px-4 py-3 text-white shadow-2xl transition-all hover:scale-110 hover:bg-green-600"
-					title="Show video call"
-				>
-					<Users class="h-5 w-5" />
-					<span class="text-sm font-medium">{remoteUsers.size + 1}</span>
-				</button>
+				</div>
 			{/if}
-
-			<!-- Hidden local video container -->
-			<div class="hidden">
-				<div bind:this={localVideoContainer}></div>
-			</div>
 		</div>
-{:else}
-	<button
-		onclick={startCall}
-		disabled={isLoading}
-		class="flex w-full items-center justify-center gap-2 rounded-lg bg-green-500 px-4 py-2.5 font-medium text-white shadow-lg transition hover:bg-green-600 hover:shadow-green-500/50 disabled:cursor-not-allowed disabled:bg-gray-500"
-	>
-		{#if isLoading}
-			<div
-				class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
-			></div>
-			<span>Starting...</span>
-		{:else}
-			<Phone class="h-4 w-4" />
-			<span>Start Video Call</span>
+
+		<!-- Minimized Button - Transparent & Small -->
+		{#if isMinimized}
+			<button
+				onclick={toggleMinimize}
+				class="flex items-center gap-2 rounded-full bg-green-500/80 backdrop-blur-sm px-3 py-2 text-white shadow-lg transition-all hover:bg-green-500 hover:scale-105 active:scale-95"
+				title="Show video call ({remoteUsers.size + 1} participant{remoteUsers.size !== 0 ? 's' : ''})"
+			>
+				<Users class="h-4 w-4" />
+				<span class="text-sm font-medium">{remoteUsers.size + 1}</span>
+			</button>
 		{/if}
-	</button>
+	</div>
+{:else}
+	<!-- Start Call Button - FIXED BOTTOM RIGHT -->
+	<div class="fixed right-4 bottom-4 z-[9999]">
+		<button
+			onclick={startCall}
+			disabled={isLoading}
+			class="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2.5 font-medium text-white shadow-lg transition hover:bg-green-600 hover:shadow-green-500/50 disabled:cursor-not-allowed disabled:bg-gray-500"
+		>
+			{#if isLoading}
+				<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+				<span>Starting...</span>
+			{:else}
+				<Phone class="h-4 w-4" />
+				<span>Start Video Call</span>
+			{/if}
+		</button>
+	</div>
 {/if}
 
 <style>
-	.minimized {
-		width: auto !important;
-		height: auto !important;
-	}
-
 	.expanded {
 		height: 400px !important;
 	}

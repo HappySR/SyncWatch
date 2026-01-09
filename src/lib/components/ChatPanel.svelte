@@ -5,7 +5,6 @@
 	import { supabase } from '$lib/supabase';
 	import { onMount, onDestroy } from 'svelte';
 	import { Send } from 'lucide-svelte';
-	import VideoCallContainer from './video-call/VideoCallContainer.svelte';
 	import ChatMessages from './ChatMessages.svelte';
 
 	let { isFullscreen = false } = $props<{ isFullscreen?: boolean }>();
@@ -101,7 +100,7 @@
 
 		isSending = true;
 		const messageToSend = newMessage.trim();
-		newMessage = ''; // Clear immediately for better UX
+		newMessage = '';
 
 		try {
 			const { error } = await supabase.from('chat_messages').insert({
@@ -112,11 +111,9 @@
 
 			if (error) throw error;
 
-			// Focus back on input
 			messageInput?.focus();
 		} catch (error) {
 			console.error('Failed to send message:', error);
-			// Restore message if failed
 			newMessage = messageToSend;
 		} finally {
 			isSending = false;
@@ -144,9 +141,7 @@
 		class="fixed bottom-4 left-4 z-50 max-h-96 w-96 transition-all duration-300 ease-in-out"
 		style="opacity: {settingsStore.chatOpacityInFullscreen}"
 	>
-		<div
-			class="overflow-hidden rounded-xl border border-white/20 bg-black/80 shadow-2xl backdrop-blur-md"
-		>
+		<div class="overflow-hidden rounded-xl border border-white/20 bg-black/80 shadow-2xl backdrop-blur-md">
 			<div class="max-h-80 space-y-2 overflow-y-auto scroll-smooth p-3">
 				{#each messages.slice(-5) as message (message.id)}
 					{@const isOwnMessage = message.user_id === authStore.user?.id}
@@ -171,14 +166,7 @@
 
 <!-- Regular Chat Panel (Non-Fullscreen) -->
 {#if !isFullscreen}
-	<div
-		class="bg-surface border-border flex h-full flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
-	>
-		<!-- Video Call Section -->
-		<div class="border-border bg-surface-hover/50 shrink-0 border-b p-4">
-			<VideoCallContainer />
-		</div>
-
+	<div class="bg-surface border-border flex h-full flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm">
 		<!-- Chat Header -->
 		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-3">
 			<h3 class="text-text-primary text-lg font-semibold">Chat</h3>
@@ -227,9 +215,7 @@
 					class="bg-primary hover:bg-primary/90 hover:shadow-primary/50 transform rounded-lg p-2.5 text-white shadow-lg transition-all hover:scale-105 active:scale-95 disabled:transform-none disabled:cursor-not-allowed disabled:bg-gray-500"
 				>
 					{#if isSending}
-						<div
-							class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"
-						></div>
+						<div class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
 					{:else}
 						<Send class="h-5 w-5" />
 					{/if}

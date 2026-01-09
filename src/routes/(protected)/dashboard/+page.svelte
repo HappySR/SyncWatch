@@ -17,28 +17,7 @@
 	let isCreating = $state(false);
 	let loadingTimeout: any;
 
-	// Force refresh tracking
-	const DASHBOARD_VISITED_KEY = 'dashboard_visited_at';
-	const FORCE_REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
-
 	onMount(async () => {
-		// Force refresh logic
-		const lastVisit = sessionStorage.getItem(DASHBOARD_VISITED_KEY);
-		const now = Date.now();
-
-		if (lastVisit) {
-			const timeSinceLastVisit = now - parseInt(lastVisit, 10);
-			if (timeSinceLastVisit > FORCE_REFRESH_INTERVAL) {
-				console.log('🔄 Force refreshing dashboard (last visit was', timeSinceLastVisit / 1000, 'seconds ago)');
-				sessionStorage.setItem(DASHBOARD_VISITED_KEY, now.toString());
-				window.location.reload();
-				return;
-			}
-		} else {
-			// First visit in this session
-			sessionStorage.setItem(DASHBOARD_VISITED_KEY, now.toString());
-		}
-
 		// Check authentication
 		if (!authStore.user) {
 			goto('/');

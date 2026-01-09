@@ -9,6 +9,7 @@
 	import RoomControls from '$lib/components/RoomControls.svelte';
 	import UserList from '$lib/components/UserList.svelte';
 	import ChatPanel from '$lib/components/ChatPanel.svelte';
+	import VideoCallContainer from '$lib/components/video-call/VideoCallContainer.svelte';
 	import { Copy, Check } from 'lucide-svelte';
 
 	let roomId = $derived($page.params.id ?? '');
@@ -33,12 +34,10 @@
 				console.log(`=== JOINING ROOM (Attempt ${retryCount + 1}/${maxRetries}) ===`);
 				console.log('Room ID:', roomId);
 
-				// Create a timeout promise
 				const timeoutPromise = new Promise((_, reject) => {
 					setTimeout(() => reject(new Error('Connection timeout after 20 seconds')), 20000);
 				});
 
-				// Race between join room and timeout
 				await Promise.race([
 					roomStore.joinRoom(roomId),
 					timeoutPromise
@@ -46,14 +45,12 @@
 
 				console.log('Room joined successfully');
 
-				// Wait a bit to ensure room data is fully loaded
 				await new Promise((resolve) => setTimeout(resolve, 500));
 
 				console.log('Current room:', roomStore.currentRoom);
 				console.log('Current members:', roomStore.members);
 				console.log('Current user:', authStore.user?.id);
 
-				// Find current user's member record
 				const myMember = roomStore.members.find((m) => m.user_id === authStore.user?.id);
 				console.log('My member record:', myMember);
 				console.log('Has controls:', myMember?.has_controls);
@@ -84,7 +81,6 @@
 					loading = false;
 					error = error.message || 'Failed to join room after multiple attempts';
 
-					// Show user-friendly error
 					setTimeout(() => {
 						alert(`Failed to join room after ${maxRetries} attempts: ${error.message || 'Unknown error'}. Returning to dashboard.`);
 						goto('/dashboard');
@@ -104,6 +100,9 @@
 		
 		roomStore.leaveRoom();
 		playerStore.cleanup();
+		
+		// Note: VideoCallContainer handles its own cleanup
+		// We do NOT cleanup video call here - it manages its own lifecycle
 	});
 
 	async function copyRoomId() {
@@ -117,7 +116,6 @@
 	}
 
 	const currentMember = $derived(roomStore.members.find((m) => m.user_id === authStore.user?.id));
-
 	const isHost = $derived(roomStore.currentRoom?.host_id === authStore.user?.id);
 </script>
 
@@ -156,19 +154,21 @@
 		<div class="grid gap-6 lg:grid-cols-[1fr_400px]">
 			<div class="space-y-6">
 				<VideoPlayer onFullscreenChange={handleFullscreenChange} />
-
 				<RoomControls />
 			</div>
 
-			<div class="flex flex-col gap-6" style="height: calc(100vh - 140px); min-height: 1400px;">
+			<div class="flex flex-col gap-6" style="height: calc(100vh - 140px); min-height: 600px;">
 				<UserList {isHost} />
-
 				<div class="flex-1 overflow-hidden">
 					<ChatPanel isFullscreen={isVideoFullscreen} />
 				</div>
 			</div>
 		</div>
 	</div>
+
+	<!-- CRITICAL: Video Call Container - Always rendered, manages own lifecycle -->
+	<!-- This component persists even during fullscreen and tab switches -->
+	<VideoCallContainer />
 {:else}
 	<div class="flex min-h-screen items-center justify-center">
 		<div class="text-xl text-white">Room not found</div>
