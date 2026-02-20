@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { onMount, onDestroy } from 'svelte';
+	import { supabase } from '$lib/supabase';
 	import { roomStore } from '$lib/stores/room.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
@@ -17,8 +18,21 @@
 	let error = $state<string | null>(null);
 	let copied = $state(false);
 	let isVideoFullscreen = $state(false);
+	let mounted = $state(false);
 
 	onMount(async () => {
+		mounted = true;
+		
+		// CRITICAL: Wait for auth
+		while (authStore.loading) {
+			await new Promise(resolve => setTimeout(resolve, 100));
+		}
+
+		if (!authStore.user) {
+			goto('/');
+			return;
+		}
+
 		if (!roomId) {
 			console.error('No room ID provided');
 			error = 'Invalid room ID';
@@ -26,73 +40,13 @@
 			return;
 		}
 
-		let retryCount = 0;
-		const maxRetries = 3;
-
-		async function attemptJoinRoom() {
-			try {
-				console.log(`=== JOINING ROOM (Attempt ${retryCount + 1}/${maxRetries}) ===`);
-				console.log('Room ID:', roomId);
-
-				const timeoutPromise = new Promise((_, reject) => {
-					setTimeout(() => reject(new Error('Connection timeout after 20 seconds')), 20000);
-				});
-
-				await Promise.race([
-					roomStore.joinRoom(roomId),
-					timeoutPromise
-				]);
-
-				console.log('Room joined successfully');
-
-				await new Promise((resolve) => setTimeout(resolve, 500));
-
-				console.log('Current room:', roomStore.currentRoom);
-				console.log('Current members:', roomStore.members);
-				console.log('Current user:', authStore.user?.id);
-
-				const myMember = roomStore.members.find((m) => m.user_id === authStore.user?.id);
-				console.log('My member record:', myMember);
-				console.log('Has controls:', myMember?.has_controls);
-
-				console.log('=== SYNCING PLAYER ===');
-				await playerStore.syncWithRoom();
-				console.log('Player synced with room');
-				console.log('Player state after sync:', {
-					videoUrl: playerStore.videoUrl,
-					videoType: playerStore.videoType,
-					currentTime: playerStore.currentTime,
-					isPlaying: playerStore.isPlaying
-				});
-
-				loading = false;
-			} catch (error: any) {
-				console.error(`Failed to join room (Attempt ${retryCount + 1}):`, error);
-
-				retryCount++;
-
-				if (retryCount < maxRetries) {
-					console.log(`Retrying in 2 seconds... (${retryCount}/${maxRetries})`);
-					error = `Connection timeout. Retrying... (${retryCount}/${maxRetries})`;
-					
-					await new Promise(resolve => setTimeout(resolve, 2000));
-					return attemptJoinRoom();
-				} else {
-					loading = false;
-					error = error.message || 'Failed to join room after multiple attempts';
-
-					setTimeout(() => {
-						alert(`Failed to join room after ${maxRetries} attempts: ${error.message || 'Unknown error'}. Returning to dashboard.`);
-						goto('/dashboard');
-					}, 100);
-				}
-			}
-		}
-
 		await attemptJoinRoom();
 	});
 
 	onDestroy(() => {
+		mounted = false;
+		console.log('🔴 Room page destroy');
+
 		// Pause any playing video before leaving
 		if (playerStore.isPlaying) {
 			playerStore.pause();
@@ -100,10 +54,49 @@
 		
 		roomStore.leaveRoom();
 		playerStore.cleanup();
-		
-		// Note: VideoCallContainer handles its own cleanup
-		// We do NOT cleanup video call here - it manages its own lifecycle
 	});
+
+	async function attemptJoinRoom() {
+		loading = true;
+		error = null;
+
+		try {
+			console.log('=== JOINING ROOM ===');
+			console.log('Room ID:', roomId);
+
+			// Join room with timeout
+			const joinPromise = roomStore.joinRoom(roomId);
+			const timeoutPromise = new Promise((_, reject) => {
+				setTimeout(() => reject(new Error('Connection timeout')), 20000);
+			});
+
+			await Promise.race([joinPromise, timeoutPromise]);
+
+			console.log('✅ Room joined successfully');
+
+			// Small delay for state to settle
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
+			console.log('Current room:', roomStore.currentRoom);
+			console.log('Current members:', roomStore.members);
+
+			// Sync player
+			console.log('=== SYNCING PLAYER ===');
+			await playerStore.syncWithRoom();
+			console.log('✅ Player synced');
+
+			loading = false;
+		} catch (error: any) {
+			console.error('❌ Failed to join room:', error);
+			loading = false;
+			
+			const errorMsg = error.message || 'Failed to join room';
+			
+			// Show error and redirect after delay
+			alert(`${errorMsg}. Returning to dashboard.`);
+			goto('/dashboard');
+		}
+	}
 
 	async function copyRoomId() {
 		await navigator.clipboard.writeText(roomId);
@@ -166,11 +159,11 @@
 		</div>
 	</div>
 
-	<!-- CRITICAL: Video Call Container - Always rendered, manages own lifecycle -->
-	<!-- This component persists even during fullscreen and tab switches -->
 	<VideoCallContainer />
 {:else}
 	<div class="flex min-h-screen items-center justify-center">
-		<div class="text-xl text-white">Room not found</div>
+		<div class="text-xl text-white">
+			{error || 'Room not found'}
+		</div>
 	</div>
 {/if}

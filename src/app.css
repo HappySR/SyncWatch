@@ -100,10 +100,10 @@ a.bg-primary,
 	color: #000000;
 }
 
-/* Override for sunishka theme specifically */
-:root:has([data-theme='sunishka']) button.bg-primary,
-:root:has([data-theme='sunishka']) a.bg-primary,
-:root:has([data-theme='sunishka']) .bg-primary {
+/* Override for zebra theme specifically */
+:root:has([data-theme='zebra']) button.bg-primary,
+:root:has([data-theme='zebra']) a.bg-primary,
+:root:has([data-theme='zebra']) .bg-primary {
 	color: #000000 !important;
 }
 

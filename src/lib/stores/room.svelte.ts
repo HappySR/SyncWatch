@@ -12,6 +12,7 @@ class RoomStore {
 	private presenceChannel: any = null;
 	private heartbeatInterval: any = null;
 	private joinTimeout: any = null;
+	private reconnectTimeout: any = null;
 
 	async createRoom(name: string) {
 		if (!authStore.user) throw new Error('Not authenticated');
@@ -213,15 +214,24 @@ class RoomStore {
 	}
 
 	startPresenceTracking(roomId: string) {
+		// CRITICAL: Properly cleanup old channel first
 		if (this.presenceChannel) {
-			supabase.removeChannel(this.presenceChannel);
+			console.log('🧹 Cleaning up old presence channel');
+			try {
+				this.presenceChannel.untrack();
+				supabase.removeChannel(this.presenceChannel);
+			} catch (err) {
+				console.warn('⚠️ Error removing old presence channel:', err);
+			}
+			this.presenceChannel = null;
 		}
 
 		if (this.heartbeatInterval) {
 			clearInterval(this.heartbeatInterval);
+			this.heartbeatInterval = null;
 		}
 
-		console.log('👥 Starting presence tracking for room:', roomId);
+		console.log('💥 Starting presence tracking for room:', roomId);
 
 		this.presenceChannel = supabase.channel(`presence:${roomId}`, {
 			config: {
@@ -249,13 +259,23 @@ class RoomStore {
 						user_id: authStore.user?.id,
 						online_at: new Date().toISOString()
 					});
+				} else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+					console.error('❌ Presence channel error:', status);
+					// Try to reconnect after delay
+					if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+					this.reconnectTimeout = setTimeout(() => {
+						if (this.currentRoom) {
+							console.log('🔄 Attempting to reconnect presence...');
+							this.startPresenceTracking(this.currentRoom.id);
+						}
+					}, 5000);
 				}
 			});
 
 		this.heartbeatInterval = setInterval(async () => {
-			if (this.presenceChannel) {
+			if (this.presenceChannel && authStore.user) {
 				await this.presenceChannel.track({
-					user_id: authStore.user?.id,
+					user_id: authStore.user.id,
 					online_at: new Date().toISOString()
 				});
 			}
@@ -286,11 +306,18 @@ class RoomStore {
 	}
 
 	subscribeToRoom(roomId: string) {
+		// CRITICAL: Properly cleanup old channel first
 		if (this.roomChannel) {
-			supabase.removeChannel(this.roomChannel);
+			console.log('🧹 Cleaning up old room channel');
+			try {
+				supabase.removeChannel(this.roomChannel);
+			} catch (err) {
+				console.warn('⚠️ Error removing old room channel:', err);
+			}
+			this.roomChannel = null;
 		}
 
-		console.log('🔌 Subscribing to room updates:', roomId);
+		console.log('📌 Subscribing to room updates:', roomId);
 
 		this.roomChannel = supabase
 			.channel(`room:${roomId}`, {
@@ -324,14 +351,11 @@ class RoomStore {
 					const newMember = payload.new as RoomMember;
 					console.log('✅ New member joined:', newMember.user_id);
 					
-					// Check if member already exists (rejoin case)
 					const existingIndex = this.members.findIndex(m => m.user_id === newMember.user_id);
 					
 					if (existingIndex >= 0) {
-						// Member rejoining - keep them in the list, will be marked online by presence
 						console.log('👤 Member rejoining, keeping in list');
 					} else {
-						// Truly new member - fetch their profile and add
 						const { data: profile } = await supabase
 							.from('profiles')
 							.select('*')
@@ -343,7 +367,7 @@ class RoomStore {
 							{
 								...newMember,
 								profiles: profile,
-								is_online: false // Will be updated by presence
+								is_online: false
 							}
 						];
 						console.log('👤 New member added to list');
@@ -360,7 +384,6 @@ class RoomStore {
 				},
 				async (payload) => {
 					console.log('👋 Member left:', payload.old);
-					// Reload members immediately when someone leaves
 					await this.loadMembers(roomId);
 				}
 			)
@@ -374,17 +397,27 @@ class RoomStore {
 				},
 				async (payload) => {
 					console.log('🔄 Member updated:', payload.new);
-					// Update specific member without full reload
 					const updatedMember = payload.new as RoomMember;
 					const index = this.members.findIndex((m) => m.id === updatedMember.id);
 					if (index !== -1) {
 						this.members[index] = { ...this.members[index], ...updatedMember };
-						this.members = [...this.members]; // Trigger reactivity
+						this.members = [...this.members];
 					}
 				}
 			)
 			.subscribe((status) => {
 				console.log('✅ Room channel:', status);
+				
+				if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+					console.error('❌ Room channel error:', status);
+					if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+					this.reconnectTimeout = setTimeout(() => {
+						if (this.currentRoom) {
+							console.log('🔄 Attempting to reconnect room channel...');
+							this.subscribeToRoom(this.currentRoom.id);
+						}
+					}, 5000);
+				}
 			});
 	}
 
@@ -421,6 +454,11 @@ class RoomStore {
 			clearTimeout(this.joinTimeout);
 			this.joinTimeout = null;
 		}
+
+		if (this.reconnectTimeout) {
+			clearTimeout(this.reconnectTimeout);
+			this.reconnectTimeout = null;
+		}
 	}
 
 	leaveRoom() {
@@ -428,6 +466,10 @@ class RoomStore {
 		this.currentRoom = null;
 		this.members = [];
 		this.error = null;
+	}
+
+	cleanup() {
+		this.unsubscribe();
 	}
 }
 

@@ -57,7 +57,7 @@
 						{:else if theme === 'forest'}
 							<div class="h-6 w-6 rounded-full bg-emerald-500"></div>
 							<div class="h-6 w-6 rounded-full bg-lime-500"></div>
-						{:else if theme === 'sunishka'}
+						{:else if theme === 'zebra'}
 							<div class="h-6 w-6 rounded-full bg-white"></div>
 							<div class="h-6 w-6 rounded-full bg-gray-300"></div>
 						{/if}

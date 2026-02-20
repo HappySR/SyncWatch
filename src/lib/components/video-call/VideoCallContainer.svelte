@@ -502,7 +502,7 @@
 {#if isInCall}
 	<!-- Video call overlay - FIXED BOTTOM RIGHT POSITION -->
 	<div
-		class="fixed z-[10000] transition-all duration-300"
+		class="fixed z-10000 transition-all duration-300"
 		style={isMinimized
 			? 'right: 16px; bottom: 16px; width: auto; height: auto;'
 			: 'right: 16px; bottom: 16px; width: 400px; max-height: 85vh;'}
@@ -702,7 +702,7 @@
 	</div>
 {:else}
 	<!-- Start Call Button - FIXED BOTTOM RIGHT -->
-	<div class="fixed right-4 bottom-4 z-[9999]">
+	<div class="fixed right-4 bottom-4 z-9999">
 		<button
 			onclick={startCall}
 			disabled={isLoading}

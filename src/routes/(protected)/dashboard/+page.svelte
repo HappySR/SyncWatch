@@ -2,9 +2,9 @@
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { roomStore } from '$lib/stores/room.svelte';
 	import { goto } from '$app/navigation';
-	import { Plus, Video, Clock, Loader, AlertCircle } from 'lucide-svelte';
-	import { onMount } from 'svelte';
-	import { supabase } from '$lib/supabase';
+	import { Plus, Video, Clock, Loader, AlertCircle, RefreshCw } from 'lucide-svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { supabase, ensureConnection } from '$lib/supabase';
 	import type { Room } from '$lib/types';
 
 	let rooms = $state<Room[]>([]);
@@ -15,31 +15,42 @@
 	let joinRoomId = $state('');
 	let isJoining = $state(false);
 	let isCreating = $state(false);
-	let loadingTimeout: any;
+	let mounted = $state(false);
+	let autoRefreshInterval: any = null;
 
 	onMount(async () => {
-		// Check authentication
+		mounted = true;
+		
+		// Wait for auth
+		let attempts = 0;
+		while (authStore.loading && attempts < 50) {
+			await new Promise(resolve => setTimeout(resolve, 100));
+			attempts++;
+		}
+
 		if (!authStore.user) {
 			goto('/');
 			return;
 		}
 
-		// Set timeout for loading state
-		loadingTimeout = setTimeout(() => {
-			if (loading) {
-				error = 'Loading is taking longer than expected. Please refresh the page.';
-				loading = false;
+		// Initial load
+		await loadRooms();
+		
+		// CRITICAL: Auto-refresh rooms every 30 seconds to keep connection alive
+		autoRefreshInterval = setInterval(() => {
+			if (mounted && !loading && authStore.user) {
+				console.log('🔄 Auto-refreshing rooms...');
+				loadRooms().catch(err => {
+					console.warn('⚠️ Auto-refresh failed:', err);
+				});
 			}
-		}, 10000);
+		}, 30000);
+	});
 
-		try {
-			await loadRooms();
-		} catch (err) {
-			console.error('Error loading rooms:', err);
-			error = 'Failed to load rooms. Please refresh the page.';
-		} finally {
-			clearTimeout(loadingTimeout);
-			loading = false;
+	onDestroy(() => {
+		mounted = false;
+		if (autoRefreshInterval) {
+			clearInterval(autoRefreshInterval);
 		}
 	});
 
@@ -51,20 +62,58 @@
 	});
 
 	async function loadRooms() {
-		if (!authStore.user) return;
+		if (!authStore.user) {
+			console.warn('⚠️ No user, cannot load rooms');
+			return;
+		}
 
-		const { data, error: fetchError } = await supabase
-			.from('room_members')
-			.select('room_id, rooms (*)')
-			.eq('user_id', authStore.user.id)
-			.throwOnError();
+		loading = true;
+		error = null;
 
-		if (fetchError) throw fetchError;
+		try {
+			console.log('📥 Loading rooms...');
+			
+			// CRITICAL: Ensure connection is alive before querying
+			const connectionOk = await ensureConnection();
+			if (!connectionOk) {
+				console.warn('⚠️ Connection not ready, waiting...');
+				await new Promise(resolve => setTimeout(resolve, 2000));
+			}
+			
+			// Load with timeout
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), 10000);
+			
+			const { data, error: fetchError } = await supabase
+				.from('room_members')
+				.select('room_id, rooms (*)')
+				.eq('user_id', authStore.user.id)
+				.abortSignal(controller.signal);
 
-		if (data) {
+			clearTimeout(timeoutId);
+
+			if (fetchError) {
+				throw fetchError;
+			}
+
 			rooms = data
-				.flatMap((d) => d.rooms)
-				.filter((room): room is Room => room !== null && room !== undefined);
+				? data
+					.flatMap((d) => d.rooms)
+					.filter((room): room is Room => room !== null && room !== undefined)
+				: [];
+			
+			console.log('✅ Loaded', rooms.length, 'rooms');
+			error = null;
+		} catch (err: any) {
+			console.error('❌ Load error:', err);
+			
+			if (err.name === 'AbortError') {
+				error = 'Loading timed out. Click retry to try again.';
+			} else {
+				error = err.message || 'Failed to load rooms. Click retry to try again.';
+			}
+		} finally {
+			loading = false;
 		}
 	}
 
@@ -93,16 +142,12 @@
 			return;
 		}
 
-		if (isJoining) {
-			console.log('Join already in progress');
-			return;
-		}
+		if (isJoining) return;
 
 		isJoining = true;
 		console.log('🚀 Joining room:', trimmedId);
 
 		try {
-			// Check if room exists
 			const { data: room, error: roomError } = await supabase
 				.from('rooms')
 				.select('id, name, is_public')
@@ -119,28 +164,14 @@
 				return;
 			}
 
-			// Join with timeout
-			const joinPromise = roomStore.joinRoom(trimmedId);
-			const timeoutPromise = new Promise((_, reject) => 
-				setTimeout(() => reject(new Error('Join timeout')), 20000)
-			);
-
-			await Promise.race([joinPromise, timeoutPromise]);
-
-			// Navigate after small delay
+			await roomStore.joinRoom(trimmedId);
+			
 			await new Promise((resolve) => setTimeout(resolve, 300));
 			joinRoomId = '';
 			goto(`/room/${trimmedId}`);
 		} catch (err: any) {
 			console.error('❌ Join error:', err);
-
-			const errorMessage = err.message?.includes('timeout')
-				? 'Connection timed out. Please check your internet and try again.'
-				: err.message?.includes('row-level security')
-				? 'You may not have permission to join this room.'
-				: 'Failed to join room. Please try again.';
-
-			alert(errorMessage);
+			alert(err.message || 'Failed to join room. Please try again.');
 		} finally {
 			isJoining = false;
 		}
@@ -152,19 +183,6 @@
 			day: 'numeric',
 			year: 'numeric'
 		});
-	}
-
-	function retryLoading() {
-		error = null;
-		loading = true;
-		loadRooms()
-			.catch((err) => {
-				console.error('Retry failed:', err);
-				error = 'Failed to load rooms. Please try again.';
-			})
-			.finally(() => {
-				loading = false;
-			});
 	}
 
 	function handleCreateKeydown(e: KeyboardEvent) {
@@ -224,11 +242,6 @@
 					{/if}
 				</button>
 			</div>
-			{#if isJoining}
-				<div class="mt-2 text-xs text-yellow-400">
-					Connecting to room... This may take up to 20 seconds. If it takes longer, please refresh the page and try again.
-				</div>
-			{/if}
 		</div>
 	</div>
 
@@ -248,11 +261,12 @@
 				<AlertCircle class="mx-auto mb-4 h-12 w-12 text-red-400" />
 				<p class="mb-4 text-red-400">{error}</p>
 				<button
-					onclick={retryLoading}
-					class="rounded-lg bg-red-500 px-6 py-2 text-white transition hover:bg-red-600"
+					onclick={loadRooms}
+					class="inline-flex items-center gap-2 rounded-lg bg-red-500 px-6 py-2 text-white transition hover:bg-red-600"
 					aria-label="Retry loading rooms"
 				>
-					Retry
+					<RefreshCw class="h-4 w-4" />
+					<span>Retry</span>
 				</button>
 			</div>
 		{:else if rooms.length === 0}

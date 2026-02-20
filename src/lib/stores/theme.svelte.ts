@@ -1,4 +1,4 @@
-type Theme = 'default' | 'soft' | 'cyan' | 'ocean' | 'sunset' | 'forest' | 'sunishka';
+type Theme = 'default' | 'soft' | 'cyan' | 'ocean' | 'sunset' | 'forest' | 'zebra';
 
 interface ThemeColors {
 	primary: string;
@@ -93,7 +93,7 @@ const themes: Record<Theme, ThemeColors> = {
 			muted: 'rgba(255, 255, 255, 0.6)'
 		}
 	},
-	sunishka: {
+	zebra: {
 		primary: '#e5e5e5',
 		secondary: '#cccccc',
 		surface: 'rgba(255, 255, 255, 0.08)',
@@ -112,16 +112,16 @@ class ThemeStore {
 	currentTheme = $state<Theme>('default');
 
 	constructor() {
-		// Load theme from localStorage, default to sunishka
+		// Load theme from localStorage, default to zebra
 		if (typeof window !== 'undefined') {
 			const saved = localStorage.getItem('theme') as Theme;
 			if (saved && themes[saved]) {
 				this.currentTheme = saved;
 			} else {
-				this.currentTheme = 'sunishka';
+				this.currentTheme = 'zebra';
 			}
 		} else {
-			this.currentTheme = 'sunishka';
+			this.currentTheme = 'zebra';
 		}
 	}
 
@@ -163,7 +163,7 @@ class ThemeStore {
 			ocean: 'Ocean Blue',
 			sunset: 'Sunset Orange',
 			forest: 'Forest Green',
-			sunishka: "Sunishka's Favourite"
+			zebra: "Zebra"
 		};
 		return names[theme];
 	}
