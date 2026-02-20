@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { playerStore } from '$lib/stores/player.svelte';
+	import { roomStore } from '$lib/stores/room.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { Maximize, Minimize, Loader, Video, SkipForward, SkipBack } from 'lucide-svelte';
 
@@ -38,6 +39,7 @@
 	let directSyncCheckInterval: any = null;
 	let isUserSeeking = false;
 	let seekDebounceTimeout: any = null;
+	let lastUserSeekAt = 0;
 	let hasUserInteracted = $state(false);
 	let pendingPlayRequest = $state(false);
 	let ignoreNextPlayEvent = false;
@@ -291,6 +293,7 @@
 				const timeDiff = Math.abs(ytTime - lastYtTime);
 				if (timeDiff > 2 && !playerStore.isSyncing) {
 					console.log('⏩ YouTube seek detected:', lastYtTime, '→', ytTime);
+					lastUserSeekAt = Date.now();
 					playerStore.seek(ytTime);
 				}
 
@@ -308,6 +311,8 @@
 
 		ytSyncCheckInterval = setInterval(() => {
 			if (!youtubePlayer || !isYouTubeReady || playerStore.isSyncing) return;
+			if (Date.now() - lastUserSeekAt < 2000) return;
+			if (roomStore.members.filter(m => m.is_online).length < 2) return;
 
 			try {
 				const ytTime = youtubePlayer.getCurrentTime();
@@ -403,6 +408,8 @@
 
 		directSyncCheckInterval = setInterval(() => {
 			if (!videoElement || !isDirectVideoReady || playerStore.isSyncing || isUserSeeking) return;
+			if (Date.now() - lastUserSeekAt < 2000) return;
+			if (roomStore.members.filter(m => m.is_online).length < 2) return;
 
 			try {
 				const videoTime = videoElement.currentTime;
@@ -573,6 +580,7 @@
 
 			if (timeDiff > 1) {
 				console.log('✅ USER seek completed, broadcasting:', videoTime);
+				lastUserSeekAt = Date.now();
 				playerStore.seek(videoTime);
 				lastDirectTime = videoTime;
 			}
