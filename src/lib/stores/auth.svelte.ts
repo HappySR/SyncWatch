@@ -21,7 +21,10 @@ class AuthStore {
 		console.log('🔐 Initializing auth...');
 
 		try {
-			const { data: { session }, error } = await supabase.auth.getSession();
+			const {
+				data: { session },
+				error
+			} = await supabase.auth.getSession();
 
 			if (error) {
 				console.error('❌ Session error:', error);
@@ -87,11 +90,14 @@ class AuthStore {
 			});
 
 			// Periodic session refresh every 5 minutes
-			setInterval(async () => {
-				if (document.visibilityState === 'visible') {
-					await this.refreshSession();
-				}
-			}, 5 * 60 * 1000);
+			setInterval(
+				async () => {
+					if (document.visibilityState === 'visible') {
+						await this.refreshSession();
+					}
+				},
+				5 * 60 * 1000
+			);
 		}
 	}
 
@@ -104,7 +110,10 @@ class AuthStore {
 		this.isRefreshing = true;
 
 		try {
-			const { data: { session }, error } = await supabase.auth.getSession();
+			const {
+				data: { session },
+				error
+			} = await supabase.auth.getSession();
 
 			if (error) {
 				console.error('❌ Session refresh error:', error);

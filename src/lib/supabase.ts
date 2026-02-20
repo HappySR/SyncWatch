@@ -57,22 +57,22 @@ export async function ensureConnection() {
 	try {
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 5000);
-		
+
 		const { error } = await supabase
 			.from('profiles')
 			.select('id')
 			.limit(1)
 			.abortSignal(controller.signal);
-		
+
 		clearTimeout(timeoutId);
-		
+
 		if (error) {
 			console.error('❌ Connection check failed:', error);
 			// Try to refresh session
 			await supabase.auth.refreshSession();
 			return false;
 		}
-		
+
 		return true;
 	} catch (err) {
 		console.error('❌ Connection error:', err);

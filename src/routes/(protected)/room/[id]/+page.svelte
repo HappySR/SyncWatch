@@ -22,10 +22,10 @@
 
 	onMount(async () => {
 		mounted = true;
-		
+
 		// CRITICAL: Wait for auth
 		while (authStore.loading) {
-			await new Promise(resolve => setTimeout(resolve, 100));
+			await new Promise((resolve) => setTimeout(resolve, 100));
 		}
 
 		if (!authStore.user) {
@@ -51,7 +51,7 @@
 		if (playerStore.isPlaying) {
 			playerStore.pause();
 		}
-		
+
 		roomStore.leaveRoom();
 		playerStore.cleanup();
 	});
@@ -89,9 +89,9 @@
 		} catch (error: any) {
 			console.error('❌ Failed to join room:', error);
 			loading = false;
-			
+
 			const errorMsg = error.message || 'Failed to join room';
-			
+
 			// Show error and redirect after delay
 			alert(`${errorMsg}. Returning to dashboard.`);
 			goto('/dashboard');

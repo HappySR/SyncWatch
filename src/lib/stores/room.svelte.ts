@@ -107,7 +107,7 @@ class RoomStore {
 				await this.loadRoom(roomId);
 				this.subscribeToRoom(roomId);
 				this.startPresenceTracking(roomId);
-				
+
 				clearTimeout(this.joinTimeout);
 				this.loading = false;
 				console.log('✅ Successfully rejoined existing room');
@@ -138,7 +138,7 @@ class RoomStore {
 			console.log('5️⃣ Membership created, loading room data...');
 
 			await this.loadRoom(roomId);
-			
+
 			console.log('6️⃣ Setting up subscriptions...');
 			this.subscribeToRoom(roomId);
 			this.startPresenceTracking(roomId);
@@ -190,9 +190,7 @@ class RoomStore {
 			const allMembers = data || [];
 
 			// Create a map of current members and their online status
-			const existingMembersMap = new Map(
-				this.members.map((m) => [m.user_id, m])
-			);
+			const existingMembersMap = new Map(this.members.map((m) => [m.user_id, m]));
 
 			// Merge new data with existing online status
 			this.members = allMembers.map((member) => {
@@ -206,7 +204,7 @@ class RoomStore {
 
 			console.log('✅ Loaded room members:', {
 				total: allMembers.length,
-				online: this.members.filter(m => m.is_online).length
+				online: this.members.filter((m) => m.is_online).length
 			});
 		} catch (err: any) {
 			console.error('Failed to load members:', err);
@@ -350,9 +348,9 @@ class RoomStore {
 				async (payload) => {
 					const newMember = payload.new as RoomMember;
 					console.log('✅ New member joined:', newMember.user_id);
-					
-					const existingIndex = this.members.findIndex(m => m.user_id === newMember.user_id);
-					
+
+					const existingIndex = this.members.findIndex((m) => m.user_id === newMember.user_id);
+
 					if (existingIndex >= 0) {
 						console.log('👤 Member rejoining, keeping in list');
 					} else {
@@ -361,7 +359,7 @@ class RoomStore {
 							.select('*')
 							.eq('id', newMember.user_id)
 							.single();
-						
+
 						this.members = [
 							...this.members,
 							{
@@ -407,7 +405,7 @@ class RoomStore {
 			)
 			.subscribe((status) => {
 				console.log('✅ Room channel:', status);
-				
+
 				if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
 					console.error('❌ Room channel error:', status);
 					if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);

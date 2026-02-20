@@ -20,11 +20,11 @@
 
 	onMount(async () => {
 		mounted = true;
-		
+
 		// Wait for auth
 		let attempts = 0;
 		while (authStore.loading && attempts < 50) {
-			await new Promise(resolve => setTimeout(resolve, 100));
+			await new Promise((resolve) => setTimeout(resolve, 100));
 			attempts++;
 		}
 
@@ -35,12 +35,12 @@
 
 		// Initial load
 		await loadRooms();
-		
+
 		// CRITICAL: Auto-refresh rooms every 30 seconds to keep connection alive
 		autoRefreshInterval = setInterval(() => {
 			if (mounted && !loading && authStore.user) {
 				console.log('🔄 Auto-refreshing rooms...');
-				loadRooms().catch(err => {
+				loadRooms().catch((err) => {
 					console.warn('⚠️ Auto-refresh failed:', err);
 				});
 			}
@@ -72,18 +72,18 @@
 
 		try {
 			console.log('📥 Loading rooms...');
-			
+
 			// CRITICAL: Ensure connection is alive before querying
 			const connectionOk = await ensureConnection();
 			if (!connectionOk) {
 				console.warn('⚠️ Connection not ready, waiting...');
-				await new Promise(resolve => setTimeout(resolve, 2000));
+				await new Promise((resolve) => setTimeout(resolve, 2000));
 			}
-			
+
 			// Load with timeout
 			const controller = new AbortController();
 			const timeoutId = setTimeout(() => controller.abort(), 10000);
-			
+
 			const { data, error: fetchError } = await supabase
 				.from('room_members')
 				.select('room_id, rooms (*)')
@@ -98,15 +98,15 @@
 
 			rooms = data
 				? data
-					.flatMap((d) => d.rooms)
-					.filter((room): room is Room => room !== null && room !== undefined)
+						.flatMap((d) => d.rooms)
+						.filter((room): room is Room => room !== null && room !== undefined)
 				: [];
-			
+
 			console.log('✅ Loaded', rooms.length, 'rooms');
 			error = null;
 		} catch (err: any) {
 			console.error('❌ Load error:', err);
-			
+
 			if (err.name === 'AbortError') {
 				error = 'Loading timed out. Click retry to try again.';
 			} else {
@@ -165,7 +165,7 @@
 			}
 
 			await roomStore.joinRoom(trimmedId);
-			
+
 			await new Promise((resolve) => setTimeout(resolve, 300));
 			joinRoomId = '';
 			goto(`/room/${trimmedId}`);
@@ -207,14 +207,14 @@
 	<div class="mb-12 grid gap-4 sm:grid-cols-2">
 		<button
 			onclick={() => (showCreateModal = true)}
-			class="bg-primary flex transform items-center justify-center gap-2 sm:gap-3 rounded-xl p-4 sm:p-6 text-white transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50"
+			class="bg-primary flex transform items-center justify-center gap-2 rounded-xl p-4 text-white transition-all hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/50 sm:gap-3 sm:p-6"
 			aria-label="Create new room"
 		>
 			<Plus class="h-5 w-5 sm:h-6 sm:w-6" />
-			<span class="text-base sm:text-lg font-semibold">Create New Room</span>
+			<span class="text-base font-semibold sm:text-lg">Create New Room</span>
 		</button>
 
-		<div class="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 backdrop-blur-sm">
+		<div class="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-sm sm:p-6">
 			<label for="join-room-input" class="mb-2 block text-sm text-white/80">
 				Join with Room ID
 			</label>
@@ -283,11 +283,15 @@
 						aria-label="Join room {room.name}"
 					>
 						<div class="mb-4 flex items-start justify-between">
-							<h3 class="wrap-break-words text-lg font-semibold text-white transition group-hover:text-purple-400">
+							<h3
+								class="wrap-break-words text-lg font-semibold text-white transition group-hover:text-purple-400"
+							>
 								{room.name}
 							</h3>
 							{#if room.is_playing}
-								<div class="ml-2 whitespace-nowrap rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
+								<div
+									class="ml-2 rounded bg-green-500/20 px-2 py-1 text-xs whitespace-nowrap text-green-400"
+								>
 									Live
 								</div>
 							{/if}
@@ -313,7 +317,7 @@
 </div>
 
 {#if showCreateModal}
-	<div 
+	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
 		onclick={(e) => {
 			if (e.target === e.currentTarget && !isCreating) {
@@ -333,9 +337,7 @@
 		tabindex="-1"
 	>
 		<div class="w-full max-w-md rounded-2xl border border-white/10 bg-slate-800 p-8">
-			<h2 id="create-room-title" class="mb-4 text-2xl font-bold text-white">
-				Create New Room
-			</h2>
+			<h2 id="create-room-title" class="mb-4 text-2xl font-bold text-white">Create New Room</h2>
 
 			<label for="room-name-input" class="sr-only">Room name</label>
 			<input

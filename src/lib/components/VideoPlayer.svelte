@@ -103,7 +103,8 @@
 		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
 		// Handle both direct video and YouTube
-		const hasVideo = (videoType === 'direct' && isDirectVideoReady) || (videoType === 'youtube' && isYouTubeReady);
+		const hasVideo =
+			(videoType === 'direct' && isDirectVideoReady) || (videoType === 'youtube' && isYouTubeReady);
 		if (!hasVideo) return;
 
 		if (e.key === 'ArrowLeft') {
@@ -141,7 +142,9 @@
 			videoElement.currentTime = newTime;
 			lastDirectTime = newTime;
 			await playerStore.seek(newTime);
-			setTimeout(() => { isUserSeeking = false; }, 100);
+			setTimeout(() => {
+				isUserSeeking = false;
+			}, 100);
 		}
 	}
 
@@ -312,7 +315,7 @@
 		ytSyncCheckInterval = setInterval(() => {
 			if (!youtubePlayer || !isYouTubeReady || playerStore.isSyncing) return;
 			if (Date.now() - lastUserSeekAt < 2000) return;
-			if (roomStore.members.filter(m => m.is_online).length < 2) return;
+			if (roomStore.members.filter((m) => m.is_online).length < 2) return;
 
 			try {
 				const ytTime = youtubePlayer.getCurrentTime();
@@ -409,7 +412,7 @@
 		directSyncCheckInterval = setInterval(() => {
 			if (!videoElement || !isDirectVideoReady || playerStore.isSyncing || isUserSeeking) return;
 			if (Date.now() - lastUserSeekAt < 2000) return;
-			if (roomStore.members.filter(m => m.is_online).length < 2) return;
+			if (roomStore.members.filter((m) => m.is_online).length < 2) return;
 
 			try {
 				const videoTime = videoElement.currentTime;
@@ -571,10 +574,10 @@
 		if (playerStore.isSyncing || !isDirectVideoReady || !videoElement) return;
 
 		if (seekDebounceTimeout) clearTimeout(seekDebounceTimeout);
-		
+
 		seekDebounceTimeout = setTimeout(() => {
 			if (!videoElement) return;
-			
+
 			const videoTime = videoElement.currentTime;
 			const timeDiff = Math.abs(videoTime - lastDirectTime);
 
@@ -584,7 +587,7 @@
 				playerStore.seek(videoTime);
 				lastDirectTime = videoTime;
 			}
-			
+
 			isUserSeeking = false;
 		}, 200);
 	}
@@ -595,7 +598,7 @@
 
 	function handleDirectVideoCanPlay() {
 		isVideoLoading = false;
-		
+
 		if (pendingPlayRequest && isPlaying) {
 			console.log('🔄 Retrying play after canplay event');
 			attemptVideoPlay();
@@ -604,21 +607,21 @@
 
 	function handleDirectVideoError(e: Event) {
 		if (!videoElement) return;
-		
+
 		const error = videoElement.error;
 		console.error('❌ Direct video error:', e, error);
-		
+
 		if (error?.code === MediaError.MEDIA_ERR_NETWORK && isUserSeeking) {
 			console.log('⚠️ Network error during seek, ignoring...');
 			isUserSeeking = false;
 			return;
 		}
-		
+
 		if (error?.code === MediaError.MEDIA_ERR_DECODE && isVideoLoading) {
 			console.log('⚠️ Decode error during loading, ignoring...');
 			return;
 		}
-		
+
 		if (error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
 			isVideoLoading = false;
 			alert('Video format not supported. Please use MP4, WebM, or OGG format.');
@@ -657,8 +660,8 @@
 		{:else if videoType === 'youtube'}
 			<div id="youtube-player" class="h-full w-full"></div>
 		{:else}
-			<div 
-				class="relative h-full w-full" 
+			<div
+				class="relative h-full w-full"
 				role="button"
 				tabindex="-1"
 				aria-label="Video player with double-tap seek support"
@@ -692,13 +695,15 @@
 
 				<!-- Autoplay Blocked Notice -->
 				{#if pendingPlayRequest && !hasUserInteracted}
-					<div class="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+					<div
+						class="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+					>
 						<button
 							onclick={handleUserInteraction}
 							class="bg-primary hover:bg-primary/90 flex items-center gap-2 rounded-lg px-6 py-3 text-white transition"
 						>
 							<svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-								<path d="M8 5v14l11-7z"/>
+								<path d="M8 5v14l11-7z" />
 							</svg>
 							<span>Click to Play Video</span>
 						</button>
@@ -707,17 +712,17 @@
 
 				<!-- Double Tap Seek Indicators -->
 				{#if showSeekIndicator === 'backward'}
-					<div class="absolute left-8 top-1/2 -translate-y-1/2 pointer-events-none z-50">
-						<div class="bg-black/70 backdrop-blur-sm rounded-full p-4 animate-fade-out">
+					<div class="pointer-events-none absolute top-1/2 left-8 z-50 -translate-y-1/2">
+						<div class="animate-fade-out rounded-full bg-black/70 p-4 backdrop-blur-sm">
 							<SkipBack class="h-12 w-12 text-white" />
 							<!-- <div class="text-white text-center mt-2 font-semibold">-10s</div> -->
 						</div>
 					</div>
 				{/if}
-				
+
 				{#if showSeekIndicator === 'forward'}
-					<div class="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none z-50">
-						<div class="bg-black/70 backdrop-blur-sm rounded-full p-4 animate-fade-out">
+					<div class="pointer-events-none absolute top-1/2 right-8 z-50 -translate-y-1/2">
+						<div class="animate-fade-out rounded-full bg-black/70 p-4 backdrop-blur-sm">
 							<SkipForward class="h-12 w-12 text-white" />
 							<!-- <div class="text-white text-center mt-2 font-semibold">+10s</div> -->
 						</div>
@@ -726,7 +731,9 @@
 			</div>
 
 			{#if isVideoLoading}
-				<div class="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
+				<div
+					class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+				>
 					<div class="text-center text-white">
 						<Loader class="mx-auto mb-2 h-12 w-12 animate-spin" />
 						<p>Loading video...</p>

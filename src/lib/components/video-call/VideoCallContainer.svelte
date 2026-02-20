@@ -85,7 +85,7 @@
 	onMount(async () => {
 		componentMounted = true;
 		console.log('📱 VideoCallContainer mounted');
-		
+
 		setupCallChannel();
 		await loadDevices();
 		setupVisibilityHandling();
@@ -93,23 +93,23 @@
 
 	onDestroy(() => {
 		console.log('🔴 VideoCallContainer destroy called, userRequestedEnd:', userRequestedEnd);
-		
+
 		// CRITICAL: Only cleanup if user explicitly ended call or component is truly being destroyed
 		// NOT on tab switch, fullscreen, or page visibility changes
 		componentMounted = false;
-		
+
 		if (callChannel) {
 			supabase.removeChannel(callChannel);
 			callChannel = null;
 		}
-		
+
 		if (visibilityCheckInterval) {
 			clearInterval(visibilityCheckInterval);
 			visibilityCheckInterval = null;
 		}
-		
+
 		document.removeEventListener('visibilitychange', handleVisibilityChange);
-		
+
 		// Only cleanup Agora if user explicitly ended the call
 		if (userRequestedEnd && isInCall) {
 			console.log('🛑 User requested end - cleaning up Agora');
@@ -122,13 +122,13 @@
 	// CRITICAL FIX: Separate Agora cleanup from component cleanup
 	async function cleanupAgora() {
 		console.log('🧹 Cleaning up Agora resources');
-		
+
 		try {
 			if (localAudioTrack) {
 				localAudioTrack.close();
 				localAudioTrack = null;
 			}
-			
+
 			if (localVideoTrack) {
 				localVideoTrack.close();
 				localVideoTrack = null;
@@ -149,13 +149,13 @@
 
 	function setupVisibilityHandling() {
 		document.addEventListener('visibilitychange', handleVisibilityChange);
-		
+
 		// Periodic health check - keep connection alive
 		visibilityCheckInterval = setInterval(() => {
 			if (!isInCall || !agoraClient) return;
-			
+
 			const connectionState = agoraClient.connectionState;
-			
+
 			if (connectionState === 'DISCONNECTED' || connectionState === 'DISCONNECTING') {
 				console.warn('⚠️ Agora disconnected, state:', connectionState);
 			} else if (connectionState === 'CONNECTED') {
@@ -166,7 +166,7 @@
 
 	function handleVisibilityChange() {
 		isPageVisible = !document.hidden;
-		
+
 		if (isPageVisible && isInCall) {
 			console.log('✅ Page visible - call continues');
 		} else if (!isPageVisible && isInCall) {
@@ -279,7 +279,7 @@
 			agoraClient.on('user-published', handleUserPublished);
 			agoraClient.on('user-unpublished', handleUserUnpublished);
 			agoraClient.on('user-left', handleUserLeft);
-			
+
 			// Connection state monitoring
 			agoraClient.on('connection-state-change', (curState, prevState) => {
 				console.log(`🔄 Connection: ${prevState} → ${curState}`);
@@ -586,7 +586,9 @@
 							style={expandedVideos.has(user.uid) ? 'height: 400px;' : 'height: 150px;'}
 						>
 							<div id="remote-video-{user.uid}" class="h-full w-full"></div>
-							<div class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
+							<div
+								class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white"
+							>
 								{user.displayName || 'Connecting...'}
 							</div>
 							<button
@@ -606,7 +608,9 @@
 			</div>
 
 			<!-- Controls -->
-			<div class="flex items-center justify-center gap-2 border-t border-white/10 bg-black/90 px-4 py-3">
+			<div
+				class="flex items-center justify-center gap-2 border-t border-white/10 bg-black/90 px-4 py-3"
+			>
 				<button
 					onclick={toggleMute}
 					class="rounded-full p-3 transition {isMuted
@@ -701,8 +705,10 @@
 		{#if isMinimized}
 			<button
 				onclick={toggleMinimize}
-				class="flex items-center gap-2 rounded-full bg-green-500/80 backdrop-blur-sm px-3 py-2 text-white shadow-lg transition-all hover:bg-green-500 hover:scale-105 active:scale-95"
-				title="Show video call ({remoteUsers.size + 1} participant{remoteUsers.size !== 0 ? 's' : ''})"
+				class="flex items-center gap-2 rounded-full bg-green-500/80 px-3 py-2 text-white shadow-lg backdrop-blur-sm transition-all hover:scale-105 hover:bg-green-500 active:scale-95"
+				title="Show video call ({remoteUsers.size + 1} participant{remoteUsers.size !== 0
+					? 's'
+					: ''})"
 			>
 				<Users class="h-4 w-4" />
 				<span class="text-sm font-medium">{remoteUsers.size + 1}</span>
@@ -718,7 +724,9 @@
 			class="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2.5 font-medium text-white shadow-lg transition hover:bg-green-600 hover:shadow-green-500/50 disabled:cursor-not-allowed disabled:bg-gray-500"
 		>
 			{#if isLoading}
-				<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+				<div
+					class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+				></div>
 				<span>Starting...</span>
 			{:else}
 				<Phone class="h-4 w-4" />

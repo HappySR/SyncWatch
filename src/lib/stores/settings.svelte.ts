@@ -22,12 +22,12 @@ class SettingsStore {
 						this.chatOpacityInFullscreen = parsedOpacity;
 					}
 				}
-				
+
 				console.log('Settings loaded:', {
 					showChatInFullscreen: this.showChatInFullscreen,
 					chatOpacityInFullscreen: this.chatOpacityInFullscreen
 				});
-				
+
 				this.isInitialized = true;
 			} catch (error) {
 				console.error('Failed to load settings:', error);

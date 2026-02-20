@@ -28,7 +28,9 @@
 
 <div class="relative min-h-screen overflow-hidden bg-black">
 	<!-- Background pattern overlay -->
-	<div class="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-size-[4rem_4rem] mask-[radial-gradient(ellipse_80%_50%_at_50%_0%,#000,transparent)]"></div>
+	<div
+		class="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] mask-[radial-gradient(ellipse_80%_50%_at_50%_0%,#000,transparent)] bg-size-[4rem_4rem]"
+	></div>
 
 	<div class="relative flex min-h-screen flex-col">
 		<!-- Header -->
@@ -54,7 +56,7 @@
 		<!-- Hero Section -->
 		<main class="flex flex-1 items-center px-4 py-12 sm:px-6 lg:px-8">
 			<div class="mx-auto w-full max-w-7xl">
-				<div class="grid gap-12 lg:grid-cols-2 lg:gap-16 items-center">
+				<div class="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
 					<!-- Left column - Content -->
 					<div class="space-y-8 text-center lg:text-left">
 						<!-- Logo for mobile -->
@@ -67,14 +69,15 @@
 						</div>
 
 						<div class="space-y-4">
-							<h1 class="text-4xl font-bold leading-tight text-white sm:text-5xl lg:text-6xl xl:text-7xl">
+							<h1
+								class="text-4xl leading-tight font-bold text-white sm:text-5xl lg:text-6xl xl:text-7xl"
+							>
 								Watch Together,
-								<span class="text-primary">
-									Stay Synced
-								</span>
+								<span class="text-primary"> Stay Synced </span>
 							</h1>
 							<p class="mx-auto max-w-2xl text-lg text-white/70 sm:text-xl lg:mx-0">
-								Experience movies and shows with friends in perfect harmony. Real-time sync, video calls, and instant chat—all in one place.
+								Experience movies and shows with friends in perfect harmony. Real-time sync, video
+								calls, and instant chat—all in one place.
 							</p>
 						</div>
 
@@ -83,13 +86,16 @@
 							<button
 								onclick={handleGoogleSignIn}
 								disabled={isSigningIn}
-								class="group relative flex items-center justify-center gap-3 rounded-xl bg-primary px-8 py-4 text-lg font-semibold text-white shadow-2xl shadow-primary/50 transition-all hover:scale-105 hover:bg-primary/90 hover:shadow-primary/80 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
+								class="group bg-primary shadow-primary/50 hover:bg-primary/90 hover:shadow-primary/80 relative flex items-center justify-center gap-3 rounded-xl px-8 py-4 text-lg font-semibold text-white shadow-2xl transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
 							>
 								{#if isSigningIn}
 									<Loader class="h-6 w-6 animate-spin" />
 									<span>Signing in...</span>
 								{:else}
-									<svg class="h-6 w-6 transition-transform group-hover:scale-110" viewBox="0 0 24 24">
+									<svg
+										class="h-6 w-6 transition-transform group-hover:scale-110"
+										viewBox="0 0 24 24"
+									>
 										<path
 											fill="#4285F4"
 											d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -112,7 +118,9 @@
 							</button>
 						</div>
 
-						<div class="flex items-center justify-center gap-6 text-sm text-white/50 lg:justify-start">
+						<div
+							class="flex items-center justify-center gap-6 text-sm text-white/50 lg:justify-start"
+						>
 							<div class="flex items-center gap-2">
 								<Shield class="h-4 w-4" />
 								<span>Free Forever</span>
@@ -126,11 +134,15 @@
 
 					<!-- Right column - Feature Cards -->
 					<div class="grid gap-4 sm:grid-cols-2 lg:gap-6">
-						<div class="group relative overflow-hidden rounded-2xl border border-white/10 bg-surface p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20">
-							<div class="absolute inset-0 bg-primary/5 opacity-0 transition-opacity group-hover:opacity-100"></div>
+						<div
+							class="group bg-surface hover:border-primary/50 hover:shadow-primary/20 relative overflow-hidden rounded-2xl border border-white/10 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:shadow-xl"
+						>
+							<div
+								class="bg-primary/5 absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
+							></div>
 							<div class="relative space-y-3">
-								<div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
-									<Wifi class="h-6 w-6 text-primary" />
+								<div class="bg-primary/20 flex h-12 w-12 items-center justify-center rounded-xl">
+									<Wifi class="text-primary h-6 w-6" />
 								</div>
 								<h3 class="text-xl font-semibold text-white">Perfect Sync</h3>
 								<p class="text-sm text-white/60">
@@ -139,11 +151,15 @@
 							</div>
 						</div>
 
-						<div class="group relative overflow-hidden rounded-2xl border border-white/10 bg-surface p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-secondary/50 hover:shadow-xl hover:shadow-secondary/20">
-							<div class="absolute inset-0 bg-secondary/5 opacity-0 transition-opacity group-hover:opacity-100"></div>
+						<div
+							class="group bg-surface hover:border-secondary/50 hover:shadow-secondary/20 relative overflow-hidden rounded-2xl border border-white/10 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:shadow-xl"
+						>
+							<div
+								class="bg-secondary/5 absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
+							></div>
 							<div class="relative space-y-3">
-								<div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
-									<Users class="h-6 w-6 text-primary" />
+								<div class="bg-primary/20 flex h-12 w-12 items-center justify-center rounded-xl">
+									<Users class="text-primary h-6 w-6" />
 								</div>
 								<h3 class="text-xl font-semibold text-white">Video Calls</h3>
 								<p class="text-sm text-white/60">
@@ -152,11 +168,15 @@
 							</div>
 						</div>
 
-						<div class="group relative overflow-hidden rounded-2xl border border-white/10 bg-surface p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20">
-							<div class="absolute inset-0 bg-primary/5 opacity-0 transition-opacity group-hover:opacity-100"></div>
+						<div
+							class="group bg-surface hover:border-primary/50 hover:shadow-primary/20 relative overflow-hidden rounded-2xl border border-white/10 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:shadow-xl"
+						>
+							<div
+								class="bg-primary/5 absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
+							></div>
 							<div class="relative space-y-3">
-								<div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
-									<Video class="h-6 w-6 text-primary" />
+								<div class="bg-primary/20 flex h-12 w-12 items-center justify-center rounded-xl">
+									<Video class="text-primary h-6 w-6" />
 								</div>
 								<h3 class="text-xl font-semibold text-white">Any Platform</h3>
 								<p class="text-sm text-white/60">
@@ -165,11 +185,15 @@
 							</div>
 						</div>
 
-						<div class="group relative overflow-hidden rounded-2xl border border-white/10 bg-surface p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-secondary/50 hover:shadow-xl hover:shadow-secondary/20">
-							<div class="absolute inset-0 bg-secondary/5 opacity-0 transition-opacity group-hover:opacity-100"></div>
+						<div
+							class="group bg-surface hover:border-secondary/50 hover:shadow-secondary/20 relative overflow-hidden rounded-2xl border border-white/10 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:shadow-xl"
+						>
+							<div
+								class="bg-secondary/5 absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
+							></div>
 							<div class="relative space-y-3">
-								<div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
-									<Sparkles class="h-6 w-6 text-primary" />
+								<div class="bg-primary/20 flex h-12 w-12 items-center justify-center rounded-xl">
+									<Sparkles class="text-primary h-6 w-6" />
 								</div>
 								<h3 class="text-xl font-semibold text-white">Live Chat</h3>
 								<p class="text-sm text-white/60">

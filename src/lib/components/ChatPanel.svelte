@@ -99,7 +99,7 @@
 					const msgId = newMsg.id;
 					// Remove after 5 seconds
 					const timer = setTimeout(() => {
-						recentMessages = recentMessages.filter(m => m.id !== msgId);
+						recentMessages = recentMessages.filter((m) => m.id !== msgId);
 						messageTimers.delete(msgId);
 					}, 5000);
 					messageTimers.set(msgId, timer);
@@ -156,7 +156,9 @@
 	>
 		{#each recentMessages as message (message.id)}
 			{@const isOwnMessage = message.user_id === authStore.user?.id}
-			<div class="animate-fadeIn overflow-hidden rounded-xl border border-white/20 bg-black/80 shadow-2xl backdrop-blur-md p-3">
+			<div
+				class="animate-fadeIn overflow-hidden rounded-xl border border-white/20 bg-black/80 p-3 shadow-2xl backdrop-blur-md"
+			>
 				<div class="mb-1 flex items-center gap-2">
 					<span class="text-xs font-medium text-white/90">
 						{isOwnMessage ? 'You' : message.profiles?.display_name || 'Unknown'}
@@ -165,7 +167,7 @@
 						{formatTime(message.created_at)}
 					</span>
 				</div>
-				<div class="wrap-break-word text-sm text-white/90">
+				<div class="text-sm wrap-break-word text-white/90">
 					{message.message}
 				</div>
 			</div>
@@ -175,13 +177,15 @@
 
 <!-- Regular Chat Panel (Non-Fullscreen) -->
 {#if !isFullscreen}
-	<div class="bg-surface border-border flex h-full flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm">
+	<div
+		class="bg-surface border-border flex h-full flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
+	>
 		<!-- Chat Header -->
 		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-3">
 			<div class="flex items-center justify-between">
 				<h3 class="text-text-primary text-lg font-semibold">Chat</h3>
 				<button
-					onclick={() => showOpacitySlider = !showOpacitySlider}
+					onclick={() => (showOpacitySlider = !showOpacitySlider)}
 					class="text-text-muted hover:text-text-primary p-1 transition"
 					title="Fullscreen overlay settings"
 				>
@@ -194,27 +198,32 @@
 			{#if showOpacitySlider}
 				<div class="mt-3 space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
 					<div class="flex items-center justify-between">
-						<label for="chat-overlay-toggle" class="text-text-muted text-xs">Overlay visibility</label>
+						<label for="chat-overlay-toggle" class="text-text-muted text-xs"
+							>Overlay visibility</label
+						>
 						<button
 							id="chat-overlay-toggle"
 							onclick={settingsStore.toggleChatInFullscreen}
-							class="text-xs px-2 py-0.5 rounded transition {settingsStore.showChatInFullscreen ? 'bg-primary/20 text-primary' : 'bg-white/10 text-text-muted'}"
+							class="rounded px-2 py-0.5 text-xs transition {settingsStore.showChatInFullscreen
+								? 'bg-primary/20 text-primary'
+								: 'text-text-muted bg-white/10'}"
 						>
 							{settingsStore.showChatInFullscreen ? 'On' : 'Off'}
 						</button>
 					</div>
 					<div class="flex items-center gap-2">
-						<span class="text-text-muted text-xs w-16">Opacity</span>
+						<span class="text-text-muted w-16 text-xs">Opacity</span>
 						<input
 							type="range"
 							min="0.1"
 							max="1"
 							step="0.05"
 							value={settingsStore.chatOpacityInFullscreen}
-							oninput={(e) => settingsStore.setChatOpacity(parseFloat((e.target as HTMLInputElement).value))}
-							class="flex-1 accent-primary"
+							oninput={(e) =>
+								settingsStore.setChatOpacity(parseFloat((e.target as HTMLInputElement).value))}
+							class="accent-primary flex-1"
 						/>
-						<span class="text-text-muted text-xs w-8 text-right">
+						<span class="text-text-muted w-8 text-right text-xs">
 							{Math.round(settingsStore.chatOpacityInFullscreen * 100)}%
 						</span>
 					</div>
@@ -223,9 +232,9 @@
 		</div>
 
 		<!-- Chat Messages - Scrollable container -->
-		<div 
+		<div
 			bind:this={chatContainer}
-			class="relative flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
+			class="relative flex-1 overflow-x-hidden overflow-y-auto scroll-smooth"
 		>
 			<ChatMessages {messages} containerRef={chatContainer} />
 		</div>
@@ -262,7 +271,9 @@
 					class="bg-primary hover:bg-primary/90 hover:shadow-primary/50 transform rounded-lg p-2.5 text-white shadow-lg transition-all hover:scale-105 active:scale-95 disabled:transform-none disabled:cursor-not-allowed disabled:bg-gray-500"
 				>
 					{#if isSending}
-						<div class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+						<div
+							class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"
+						></div>
 					{:else}
 						<Send class="h-5 w-5" />
 					{/if}
