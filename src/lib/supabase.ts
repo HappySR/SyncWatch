@@ -32,37 +32,6 @@ export const supabase = createClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_K
 	}
 });
 
-// CRITICAL: Keep-alive mechanism to prevent tab throttling issues
-let keepAliveInterval: any = null;
-let pageVisible = true;
-
-if (typeof window !== 'undefined') {
-	// Track visibility
-	document.addEventListener('visibilitychange', () => {
-		pageVisible = !document.hidden;
-		console.log(pageVisible ? '👁️ Page visible' : '💤 Page hidden');
-	});
-
-	// CRITICAL: Aggressive keep-alive ping every 5 seconds
-	keepAliveInterval = setInterval(async () => {
-		// Ping even when hidden to keep connection alive
-		try {
-			// Lightweight ping - just check if we can connect
-			const { error } = await supabase
-				.from('profiles')
-				.select('id')
-				.limit(0) // Don't fetch any data, just test connection
-				.abortSignal(AbortSignal.timeout(3000));
-			
-			if (error && !error.message.includes('AbortError')) {
-				console.warn('⚠️ Keep-alive ping failed:', error.message);
-			}
-		} catch (err) {
-			// Ignore errors - this is just a keep-alive
-		}
-	}, 5000); // Every 5 seconds
-}
-
 // Export helper functions
 export async function signInWithGoogle() {
 	const { error } = await supabase.auth.signInWithOAuth({
