@@ -1,11 +1,32 @@
 <script lang="ts">
 	import { roomStore } from '$lib/stores/room.svelte';
-	import { Users, Crown, Eye, Video } from 'lucide-svelte';
+	import { authStore } from '$lib/stores/auth.svelte';
+	import { supabase } from '$lib/supabase';
+	import { goto } from '$app/navigation';
+	import { Users, Crown, Eye, Video, LogOut } from 'lucide-svelte';
 
 	let { isHost } = $props<{ isHost: boolean }>();
+	let isLeaving = $state(false);
 
 	async function toggleControls(memberId: string, currentState: boolean) {
 		await roomStore.toggleMemberControls(memberId, !currentState);
+	}
+
+	async function leaveRoom() {
+		if (!authStore.user || !roomStore.currentRoom || isLeaving) return;
+		isLeaving = true;
+		try {
+			await supabase
+				.from('room_members')
+				.delete()
+				.eq('room_id', roomStore.currentRoom.id)
+				.eq('user_id', authStore.user.id);
+			roomStore.leaveRoom();
+			goto('/dashboard');
+		} catch (err) {
+			console.error('Failed to leave room:', err);
+			isLeaving = false;
+		}
 	}
 </script>
 
@@ -107,4 +128,20 @@
 			</p>
 		</div>
 	{/if}
+
+	<div class="border-border mt-4 border-t pt-4">
+		<button
+			onclick={leaveRoom}
+			disabled={isLeaving}
+			class="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-500/20 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+		>
+			{#if isLeaving}
+				<div class="h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent"></div>
+				<span>Leaving...</span>
+			{:else}
+				<LogOut class="h-4 w-4" />
+				<span>Leave Room</span>
+			{/if}
+		</button>
+	</div>
 </div>

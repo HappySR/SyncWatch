@@ -212,6 +212,15 @@ class RoomStore {
 	}
 
 	startPresenceTracking(roomId: string) {
+		// Handle tab close / page unload - untrack presence immediately
+		if (typeof window !== 'undefined') {
+			window.addEventListener('beforeunload', () => {
+				if (this.presenceChannel) {
+					this.presenceChannel.untrack();
+				}
+			});
+		}
+
 		// CRITICAL: Properly cleanup old channel first
 		if (this.presenceChannel) {
 			console.log('🧹 Cleaning up old presence channel');
@@ -246,6 +255,13 @@ class RoomStore {
 			})
 			.on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
 				console.log('✅ User joined presence:', key);
+				// If the returning user is the current user, trigger video re-sync
+				if (key === authStore.user?.id) {
+					console.log('🔄 Current user returned online — triggering video sync');
+					import('./player.svelte').then(({ playerStore }) => {
+						playerStore.syncWithRoom();
+					});
+				}
 			})
 			.on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
 				console.log('👋 User left presence:', key);
@@ -257,6 +273,35 @@ class RoomStore {
 						user_id: authStore.user?.id,
 						online_at: new Date().toISOString()
 					});
+
+					// Handle tab visibility: untrack when hidden, retrack when visible
+					if (typeof document !== 'undefined') {
+						const handleVisibility = async () => {
+							if (document.hidden) {
+								// User switched tab/app — mark as offline
+								if (this.presenceChannel) {
+									await this.presenceChannel.untrack();
+									console.log('👁️ Tab hidden — untracked presence');
+								}
+							} else {
+								// User returned — mark as online and sync video
+								if (this.presenceChannel) {
+									await this.presenceChannel.track({
+										user_id: authStore.user?.id,
+										online_at: new Date().toISOString()
+									});
+									console.log('✅ Tab visible — retracked presence');
+									// Sync video state after returning
+									import('./player.svelte').then(({ playerStore }) => {
+										playerStore.syncWithRoom();
+									});
+								}
+							}
+						};
+						// Remove any old listener before adding
+						document.removeEventListener('visibilitychange', handleVisibility);
+						document.addEventListener('visibilitychange', handleVisibility);
+					}
 				} else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
 					console.error('❌ Presence channel error:', status);
 					// Try to reconnect after delay

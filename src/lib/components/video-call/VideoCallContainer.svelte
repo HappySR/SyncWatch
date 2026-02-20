@@ -79,29 +79,37 @@
 
 	// Drag state
 	let dragContainer: HTMLDivElement | undefined = $state(undefined);
+	let minimizedDragContainer: HTMLButtonElement | undefined = $state(undefined);
 	let isDragging = $state(false);
+	let isDragReady = $state(false); // true after hold completes on mobile
 	let dragOffsetX = 0;
 	let dragOffsetY = 0;
-	let posX = $state(-1); // -1 means unset, use CSS default
+	let posX = $state(-1);
 	let posY = $state(-1);
+	let holdTimer: any = null;
+	let isMobileHolding = $state(false);
 
-	function startDrag(e: MouseEvent | TouchEvent) {
-		if (!dragContainer) return;
+	function isMobile() {
+		return window.matchMedia('(pointer: coarse)').matches;
+	}
+
+	function executeDrag(element: HTMLElement, startClientX: number, startClientY: number) {
+		const rect = element.getBoundingClientRect();
+		dragOffsetX = startClientX - rect.left;
+		dragOffsetY = startClientY - rect.top;
 		isDragging = true;
-		const rect = dragContainer.getBoundingClientRect();
-		const clientX = e instanceof MouseEvent ? e.clientX : e.touches[0].clientX;
-		const clientY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
-		dragOffsetX = clientX - rect.left;
-		dragOffsetY = clientY - rect.top;
+		isDragReady = false;
+		isMobileHolding = false;
 
 		const onMove = (ev: MouseEvent | TouchEvent) => {
 			if (!isDragging) return;
+			ev.preventDefault();
 			const cx = ev instanceof MouseEvent ? ev.clientX : ev.touches[0].clientX;
 			const cy = ev instanceof MouseEvent ? ev.clientY : ev.touches[0].clientY;
 			const newX = cx - dragOffsetX;
 			const newY = cy - dragOffsetY;
-			const maxX = window.innerWidth - (dragContainer?.offsetWidth ?? 400);
-			const maxY = window.innerHeight - (dragContainer?.offsetHeight ?? 200);
+			const maxX = window.innerWidth - (element?.offsetWidth ?? 320);
+			const maxY = window.innerHeight - (element?.offsetHeight ?? 200);
 			posX = Math.max(0, Math.min(newX, maxX));
 			posY = Math.max(0, Math.min(newY, maxY));
 		};
@@ -118,6 +126,91 @@
 		window.addEventListener('mouseup', onUp);
 		window.addEventListener('touchmove', onMove, { passive: false });
 		window.addEventListener('touchend', onUp);
+	}
+
+	function startDrag(e: MouseEvent | TouchEvent) {
+		const element = dragContainer;
+		if (!element) return;
+
+		if (e instanceof MouseEvent) {
+			// Desktop: drag immediately from header
+			executeDrag(element, e.clientX, e.clientY);
+			return;
+		}
+
+		// Mobile: require 1.5s hold
+		const touch = e.touches[0];
+		const startX = touch.clientX;
+		const startY = touch.clientY;
+		isMobileHolding = true;
+
+		holdTimer = setTimeout(() => {
+			isDragReady = true;
+			isMobileHolding = false;
+			// Vibrate if supported
+			if (navigator.vibrate) navigator.vibrate(60);
+			executeDrag(element, startX, startY);
+		}, 1500);
+
+		// Cancel hold if finger moves too much or lifts
+		const cancelHold = (ev: TouchEvent) => {
+			if (holdTimer) {
+				clearTimeout(holdTimer);
+				holdTimer = null;
+			}
+			isMobileHolding = false;
+			element.removeEventListener('touchmove', onTouchMoveCancel);
+			element.removeEventListener('touchend', cancelHold);
+		};
+
+		const onTouchMoveCancel = (ev: TouchEvent) => {
+			const dx = ev.touches[0].clientX - startX;
+			const dy = ev.touches[0].clientY - startY;
+			if (Math.sqrt(dx * dx + dy * dy) > 10) {
+				cancelHold(ev);
+			}
+		};
+
+		element.addEventListener('touchmove', onTouchMoveCancel, { passive: true });
+		element.addEventListener('touchend', cancelHold, { once: true });
+	}
+
+	function startMinimizedDrag(e: MouseEvent | TouchEvent) {
+		const element = minimizedDragContainer;
+		if (!element) return;
+
+		if (e instanceof MouseEvent) {
+			executeDrag(element, e.clientX, e.clientY);
+			return;
+		}
+
+		const touch = e.touches[0];
+		const startX = touch.clientX;
+		const startY = touch.clientY;
+		isMobileHolding = true;
+
+		holdTimer = setTimeout(() => {
+			isDragReady = true;
+			isMobileHolding = false;
+			if (navigator.vibrate) navigator.vibrate(60);
+			executeDrag(element, startX, startY);
+		}, 1500);
+
+		const cancelHold = (ev: TouchEvent) => {
+			if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+			isMobileHolding = false;
+			element.removeEventListener('touchmove', onTouchMoveCancel);
+			element.removeEventListener('touchend', cancelHold);
+		};
+
+		const onTouchMoveCancel = (ev: TouchEvent) => {
+			const dx = ev.touches[0].clientX - startX;
+			const dy = ev.touches[0].clientY - startY;
+			if (Math.sqrt(dx * dx + dy * dy) > 10) cancelHold(ev);
+		};
+
+		element.addEventListener('touchmove', onTouchMoveCancel, { passive: true });
+		element.addEventListener('touchend', cancelHold, { once: true });
 	}
 
 	const channelName = $derived(`syncwatch-${roomStore.currentRoom?.id || 'default'}`);
@@ -557,10 +650,10 @@
 		bind:this={dragContainer}
 		class="fixed z-10000"
 		style={posX >= 0
-			? `left: ${posX}px; top: ${posY}px; ${isMinimized ? 'width: auto; height: auto;' : 'width: 400px; max-height: 85vh;'}`
+			? `left: ${posX}px; top: ${posY}px; ${isMinimized ? 'width: auto; height: auto;' : 'width: 320px; max-height: 85vh;'}`
 			: isMinimized
 				? 'right: 16px; bottom: 16px; width: auto; height: auto;'
-				: 'right: 16px; bottom: 16px; width: 400px; max-height: 85vh;'}
+				: 'right: 16px; bottom: 16px; width: 320px; max-height: 85vh;'}
 	>
 		<!-- Expanded Video Call Panel -->
 		<div
@@ -571,7 +664,8 @@
 			<div
 				role="button"
 				tabindex="0"
-				class="flex cursor-grab items-center justify-between border-b border-white/10 bg-black/90 px-3 py-2 select-none active:cursor-grabbing"
+				class="flex cursor-grab items-center justify-between border-b border-white/10 bg-black/90 px-3 py-2 select-none active:cursor-grabbing
+					{isMobileHolding ? 'bg-white/10' : ''}"
 				onmousedown={startDrag}
 				ontouchstart={startDrag}
 			>
@@ -766,14 +860,19 @@
 		<!-- Minimized Button - Transparent & Small -->
 		{#if isMinimized}
 			<button
+				bind:this={minimizedDragContainer}
 				onclick={toggleMinimize}
-				class="flex items-center gap-2 rounded-full bg-green-500/80 px-3 py-2 text-white shadow-lg backdrop-blur-sm transition-all hover:scale-105 hover:bg-green-500 active:scale-95"
-				title="Show video call ({remoteUsers.size + 1} participant{remoteUsers.size !== 0
-					? 's'
-					: ''})"
+				onmousedown={startMinimizedDrag}
+				ontouchstart={startMinimizedDrag}
+				class="flex items-center gap-2 rounded-full px-3 py-2 text-white shadow-lg backdrop-blur-sm transition-all active:scale-95 select-none
+					{isMobileHolding ? 'bg-green-400 scale-110 ring-2 ring-white/50' : 'bg-green-500/80 hover:scale-105 hover:bg-green-500'}"
+				title="Hold to drag · Tap to expand ({remoteUsers.size + 1} participant{remoteUsers.size !== 0 ? 's' : ''})"
 			>
 				<Users class="h-4 w-4" />
 				<span class="text-sm font-medium">{remoteUsers.size + 1}</span>
+				{#if isMobileHolding}
+					<span class="text-xs text-white/70">Hold…</span>
+				{/if}
 			</button>
 		{/if}
 	</div>
