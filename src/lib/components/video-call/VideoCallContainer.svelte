@@ -899,7 +899,7 @@
 				<span>Starting...</span>
 			{:else}
 				<Phone class="h-4 w-4" />
-				<span>Start Video Call</span>
+				<span>Start Call</span>
 			{/if}
 		</button>
 	</div>
