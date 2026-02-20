@@ -98,25 +98,24 @@
 	// ==================== KEYBOARD CONTROLS ====================
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
-		// Only handle if video is loaded and no input is focused
-		if (!videoElement || !isDirectVideoReady) return;
 		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+		// Handle both direct video and YouTube
+		const hasVideo = (videoType === 'direct' && isDirectVideoReady) || (videoType === 'youtube' && isYouTubeReady);
+		if (!hasVideo) return;
 
 		if (e.key === 'ArrowLeft') {
 			e.preventDefault();
-			handleKeyboardSeek(-10);
+			handleSkip(-10);
 		} else if (e.key === 'ArrowRight') {
 			e.preventDefault();
-			handleKeyboardSeek(10);
+			handleSkip(10);
 		}
 	}
 
-	async function handleKeyboardSeek(amount: number) {
-		if (!videoElement || !isDirectVideoReady || !playerStore.canControl()) return;
+	async function handleSkip(amount: number) {
+		if (!playerStore.canControl()) return;
 
-		const currentVideoTime = videoElement.currentTime;
-		const newTime = Math.max(0, Math.min(videoElement.duration, currentVideoTime + amount));
-		
 		// Show indicator
 		showSeekIndicator = amount > 0 ? 'forward' : 'backward';
 		if (seekIndicatorTimeout) clearTimeout(seekIndicatorTimeout);
@@ -124,16 +123,29 @@
 			showSeekIndicator = null;
 		}, 500);
 
-		// Perform seek and broadcast
-		isUserSeeking = true;
-		videoElement.currentTime = newTime;
-		lastDirectTime = newTime;
-		
-		await playerStore.seek(newTime);
-		
-		setTimeout(() => {
-			isUserSeeking = false;
-		}, 100);
+		if (videoType === 'youtube' && isYouTubeReady && youtubePlayer) {
+			// Read live time directly from YouTube player
+			const liveTime = youtubePlayer.getCurrentTime();
+			const newTime = Math.max(0, liveTime + amount);
+			youtubePlayer.seekTo(newTime, true);
+			lastYtTime = newTime;
+			playerStore.currentTime = newTime;
+			await playerStore.seek(newTime);
+		} else if (videoType === 'direct' && isDirectVideoReady && videoElement) {
+			// Read live time directly from the video element
+			const liveTime = videoElement.currentTime;
+			const newTime = Math.max(0, Math.min(videoElement.duration || Infinity, liveTime + amount));
+			isUserSeeking = true;
+			videoElement.currentTime = newTime;
+			lastDirectTime = newTime;
+			await playerStore.seek(newTime);
+			setTimeout(() => { isUserSeeking = false; }, 100);
+		}
+	}
+
+	// Keep old name as alias so handleDoubleTapSeek still works
+	async function handleKeyboardSeek(amount: number) {
+		await handleSkip(amount);
 	}
 
 	// ==================== DOUBLE TAP SEEK ====================
@@ -160,28 +172,7 @@
 	}
 
 	async function handleDoubleTapSeek(amount: number) {
-		if (!videoElement || !isDirectVideoReady || !playerStore.canControl()) return;
-
-		const currentVideoTime = videoElement.currentTime;
-		const newTime = Math.max(0, Math.min(videoElement.duration, currentVideoTime + amount));
-		
-		// Show indicator
-		showSeekIndicator = amount > 0 ? 'forward' : 'backward';
-		if (seekIndicatorTimeout) clearTimeout(seekIndicatorTimeout);
-		seekIndicatorTimeout = setTimeout(() => {
-			showSeekIndicator = null;
-		}, 500);
-
-		// Perform seek and broadcast
-		isUserSeeking = true;
-		videoElement.currentTime = newTime;
-		lastDirectTime = newTime;
-		
-		await playerStore.seek(newTime);
-		
-		setTimeout(() => {
-			isUserSeeking = false;
-		}, 100);
+		await handleSkip(amount);
 	}
 
 	// ==================== YOUTUBE FUNCTIONS ====================

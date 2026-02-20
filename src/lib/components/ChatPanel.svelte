@@ -4,7 +4,7 @@
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { supabase } from '$lib/supabase';
 	import { onMount, onDestroy } from 'svelte';
-	import { Send } from 'lucide-svelte';
+	import { Send, SlidersHorizontal } from 'lucide-svelte';
 	import ChatMessages from './ChatMessages.svelte';
 
 	let { isFullscreen = false } = $props<{ isFullscreen?: boolean }>();
@@ -28,6 +28,9 @@
 	let channel: any;
 	let isTyping = $state(false);
 	let isSending = $state(false);
+	let showOpacitySlider = $state(false);
+	let recentMessages = $state<ChatMessage[]>([]);
+	let messageTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	onMount(async () => {
 		await loadMessages();
@@ -90,6 +93,16 @@
 					}
 
 					messages = [...messages, newMsg];
+
+					// Add to recent messages for fullscreen overlay
+					recentMessages = [...recentMessages, newMsg].slice(-3);
+					const msgId = newMsg.id;
+					// Remove after 5 seconds
+					const timer = setTimeout(() => {
+						recentMessages = recentMessages.filter(m => m.id !== msgId);
+						messageTimers.delete(msgId);
+					}, 5000);
+					messageTimers.set(msgId, timer);
 				}
 			)
 			.subscribe();
@@ -135,32 +148,28 @@
 	}
 </script>
 
-<!-- Fullscreen Chat Overlay -->
-{#if isFullscreen && settingsStore.showChatInFullscreen && messages.length > 0}
+<!-- Fullscreen Chat Overlay — top-right, last 3 messages, 5s TTL -->
+{#if isFullscreen && settingsStore.showChatInFullscreen && recentMessages.length > 0}
 	<div
-		class="fixed bottom-4 left-4 z-50 max-h-96 w-96 transition-all duration-300 ease-in-out"
+		class="fixed top-4 right-4 z-50 w-80 space-y-2 transition-all duration-300 ease-in-out"
 		style="opacity: {settingsStore.chatOpacityInFullscreen}"
 	>
-		<div class="overflow-hidden rounded-xl border border-white/20 bg-black/80 shadow-2xl backdrop-blur-md">
-			<div class="max-h-80 space-y-2 overflow-y-auto scroll-smooth p-3">
-				{#each messages.slice(-5) as message (message.id)}
-					{@const isOwnMessage = message.user_id === authStore.user?.id}
-					<div class="animate-fadeIn rounded-lg bg-white/10 p-2">
-						<div class="mb-1 flex items-center gap-2">
-							<span class="text-xs font-medium text-white/90">
-								{isOwnMessage ? 'You' : message.profiles?.display_name || 'Unknown'}
-							</span>
-							<span class="text-xs text-white/50">
-								{formatTime(message.created_at)}
-							</span>
-						</div>
-						<div class="wrap-break-words text-sm text-white/90">
-							{message.message}
-						</div>
-					</div>
-				{/each}
+		{#each recentMessages as message (message.id)}
+			{@const isOwnMessage = message.user_id === authStore.user?.id}
+			<div class="animate-fadeIn overflow-hidden rounded-xl border border-white/20 bg-black/80 shadow-2xl backdrop-blur-md p-3">
+				<div class="mb-1 flex items-center gap-2">
+					<span class="text-xs font-medium text-white/90">
+						{isOwnMessage ? 'You' : message.profiles?.display_name || 'Unknown'}
+					</span>
+					<span class="text-xs text-white/50">
+						{formatTime(message.created_at)}
+					</span>
+				</div>
+				<div class="wrap-break-word text-sm text-white/90">
+					{message.message}
+				</div>
 			</div>
-		</div>
+		{/each}
 	</div>
 {/if}
 
@@ -169,10 +178,48 @@
 	<div class="bg-surface border-border flex h-full flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm">
 		<!-- Chat Header -->
 		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-3">
-			<h3 class="text-text-primary text-lg font-semibold">Chat</h3>
+			<div class="flex items-center justify-between">
+				<h3 class="text-text-primary text-lg font-semibold">Chat</h3>
+				<button
+					onclick={() => showOpacitySlider = !showOpacitySlider}
+					class="text-text-muted hover:text-text-primary p-1 transition"
+					title="Fullscreen overlay settings"
+				>
+					<SlidersHorizontal class="h-4 w-4" />
+				</button>
+			</div>
 			<p class="text-text-muted mt-1 text-xs">
 				{messages.length} message{messages.length !== 1 ? 's' : ''}
 			</p>
+			{#if showOpacitySlider}
+				<div class="mt-3 space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+					<div class="flex items-center justify-between">
+						<label for="chat-overlay-toggle" class="text-text-muted text-xs">Overlay visibility</label>
+						<button
+							id="chat-overlay-toggle"
+							onclick={settingsStore.toggleChatInFullscreen}
+							class="text-xs px-2 py-0.5 rounded transition {settingsStore.showChatInFullscreen ? 'bg-primary/20 text-primary' : 'bg-white/10 text-text-muted'}"
+						>
+							{settingsStore.showChatInFullscreen ? 'On' : 'Off'}
+						</button>
+					</div>
+					<div class="flex items-center gap-2">
+						<span class="text-text-muted text-xs w-16">Opacity</span>
+						<input
+							type="range"
+							min="0.1"
+							max="1"
+							step="0.05"
+							value={settingsStore.chatOpacityInFullscreen}
+							oninput={(e) => settingsStore.setChatOpacity(parseFloat((e.target as HTMLInputElement).value))}
+							class="flex-1 accent-primary"
+						/>
+						<span class="text-text-muted text-xs w-8 text-right">
+							{Math.round(settingsStore.chatOpacityInFullscreen * 100)}%
+						</span>
+					</div>
+				</div>
+			{/if}
 		</div>
 
 		<!-- Chat Messages - Scrollable container -->

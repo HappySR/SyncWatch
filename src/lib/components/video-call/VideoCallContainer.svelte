@@ -68,6 +68,9 @@
 	// Expanded video states
 	let expandedVideos = $state<Set<string>>(new Set());
 
+	// Buffer for display names received before user-published fires
+	let pendingDisplayNames = new Map<string, string>();
+
 	// Visibility and lifecycle tracking - CRITICAL
 	let isPageVisible = $state(true);
 	let visibilityCheckInterval: any = null;
@@ -195,6 +198,8 @@
 			})
 			.on('broadcast', { event: 'user-display-name' }, (payload) => {
 				const { uid, displayName: name } = payload.payload;
+				// Always store in pending so late arrivals can pick it up
+				pendingDisplayNames.set(uid, name);
 				const user = remoteUsers.get(uid);
 				if (user) {
 					user.displayName = name;
@@ -338,7 +343,11 @@
 	async function handleUserPublished(user: any, mediaType: 'audio' | 'video') {
 		await agoraClient?.subscribe(user, mediaType);
 
-		const remoteUser = remoteUsers.get(String(user.uid)) || { uid: String(user.uid) };
+		const uidStr = String(user.uid);
+		const remoteUser = remoteUsers.get(uidStr) || {
+			uid: uidStr,
+			displayName: pendingDisplayNames.get(uidStr)
+		};
 
 		if (mediaType === 'video') {
 			remoteUser.videoTrack = user.videoTrack;
@@ -578,7 +587,7 @@
 						>
 							<div id="remote-video-{user.uid}" class="h-full w-full"></div>
 							<div class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
-								{user.displayName || `User ${user.uid}`}
+								{user.displayName || 'Connecting...'}
 							</div>
 							<button
 								onclick={() => toggleExpandVideo(user.uid)}

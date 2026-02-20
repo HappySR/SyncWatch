@@ -189,6 +189,14 @@ class PlayerStore {
 		await this.broadcastEvent('seek', { time });
 	}
 
+	async skipBy(seconds: number, getLiveTime: () => number) {
+		if (!this.canControl()) return;
+		const liveTime = getLiveTime();
+		const newTime = Math.max(0, liveTime + seconds);
+		this.currentTime = newTime;
+		await this.broadcastEvent('seek', { time: newTime });
+	}
+
 	async changeVideo(url: string, type: 'youtube' | 'direct') {
 		if (!this.canControl()) return;
 
