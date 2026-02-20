@@ -67,25 +67,35 @@ class PlayerStore {
 		this.isSyncing = true;
 
 		switch (event.type) {
-			case 'play':
+			case 'play': {
 				this.isPlaying = true;
 				this.lastPlayPauseEventAt = Date.now();
 				if (event.time !== undefined) {
-					this.currentTime = event.time;
+					// Compensate: video was playing on sender's side since sentAt,
+					// so we add the transit time to stay in sync
+					const transitMs = event.sentAt ? (Date.now() - event.sentAt) : 0;
+					const compensated = event.time + (transitMs / 1000);
+					this.currentTime = compensated;
 				}
 				break;
+			}
 
 			case 'pause':
 				this.isPlaying = false;
 				this.lastPlayPauseEventAt = Date.now();
 				if (event.time !== undefined) {
+					// No compensation on pause — video was stopped at this exact time
 					this.currentTime = event.time;
 				}
 				break;
 
 			case 'seek':
 				if (event.time !== undefined) {
-					this.currentTime = event.time;
+					// Partial compensation on seek — sender may have kept playing briefly
+					const transitMs = event.sentAt ? (Date.now() - event.sentAt) : 0;
+					this.currentTime = this.isPlaying
+						? event.time + (transitMs / 1000)
+						: event.time;
 				}
 				break;
 
@@ -126,29 +136,38 @@ class PlayerStore {
 		const payload = {
 			type,
 			userId: authStore.user.id,
-			timestamp: Date.now(),
+			sentAt: Date.now(), // used by receivers to compensate for transit time
 			...data
 		};
 
 		console.log('📤 Broadcasting:', type);
 
-		// Broadcast via Realtime (instant!)
-		await this.channel.send({
+		this.channel.send({
 			type: 'broadcast',
 			event: 'player-action',
 			payload
-		});
+		}); // NOT awaited — fire and forget for minimum latency
 
 		// Update database in background (don't await)
 		this.updateRoomStateInBackground(type, data);
 	}
 
+	private seekDbDebounce: any = null;
+
 	updateRoomStateInBackground(type: string, data: any) {
 		if (!roomStore.currentRoom) return;
 
-		const updates: any = {
-			last_updated: new Date().toISOString()
-		};
+		// Seek events are very frequent — debounce DB writes to max 1 per second
+		// Play/pause/change_video always write immediately
+		if (type === 'seek') {
+			if (this.seekDbDebounce) clearTimeout(this.seekDbDebounce);
+			this.seekDbDebounce = setTimeout(() => {
+				this.writeRoomState({ video_time: data.time ?? this.currentTime });
+			}, 1000);
+			return;
+		}
+
+		const updates: any = {};
 
 		switch (type) {
 			case 'play':
@@ -159,9 +178,6 @@ class PlayerStore {
 				updates.is_playing = false;
 				updates.video_time = data.time ?? this.currentTime;
 				break;
-			case 'seek':
-				updates.video_time = data.time ?? this.currentTime;
-				break;
 			case 'change_video':
 				updates.current_video_url = data.url;
 				updates.current_video_type = data.videoType;
@@ -170,14 +186,17 @@ class PlayerStore {
 				break;
 		}
 
-		// Fire and forget - don't block the UI
+		this.writeRoomState(updates);
+	}
+
+	private writeRoomState(updates: any) {
+		if (!roomStore.currentRoom) return;
 		supabase
 			.from('rooms')
-			.update(updates)
+			.update({ ...updates, last_updated: new Date().toISOString() })
 			.eq('id', roomStore.currentRoom.id)
 			.then(({ error }) => {
 				if (error) console.error('❌ Background DB update failed:', error);
-				else console.log('✅ DB updated in background');
 			});
 	}
 
@@ -195,10 +214,37 @@ class PlayerStore {
 		await this.broadcastEvent('pause', { time: this.currentTime });
 	}
 
+	private lastSeekBroadcastAt = 0;
+	private pendingSeekTime: number | null = null;
+	private seekBroadcastTimer: any = null;
+
 	async seek(time: number) {
 		if (!this.canControl()) return;
 		this.currentTime = time;
-		await this.broadcastEvent('seek', { time });
+
+		const now = Date.now();
+
+		// While seeking, throttle broadcasts to max 1 per 150ms
+		// but always send the final position
+		if (now - this.lastSeekBroadcastAt < 150) {
+			this.pendingSeekTime = time;
+			if (!this.seekBroadcastTimer) {
+				this.seekBroadcastTimer = setTimeout(() => {
+					this.seekBroadcastTimer = null;
+					if (this.pendingSeekTime !== null) {
+						const t = this.pendingSeekTime;
+						this.pendingSeekTime = null;
+						this.lastSeekBroadcastAt = Date.now();
+						this.broadcastEvent('seek', { time: t });
+					}
+				}, 150);
+			}
+			return;
+		}
+
+		this.lastSeekBroadcastAt = now;
+		this.pendingSeekTime = null;
+		this.broadcastEvent('seek', { time });
 	}
 
 	async skipBy(seconds: number, getLiveTime: () => number) {

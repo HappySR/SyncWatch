@@ -12,14 +12,12 @@ export const supabase = createClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_K
 	},
 	realtime: {
 		params: {
-			eventsPerSecond: 10
+			eventsPerSecond: 25 // raise from 10 — allows bursts during seeking without dropping events
 		},
-		// CRITICAL: Aggressive settings to keep connection alive
-		heartbeatIntervalMs: 15000, // Send heartbeat every 15s
-		timeout: 60000, // Wait 60s before considering dead
-		// CRITICAL: Reconnect immediately on disconnect
+		heartbeatIntervalMs: 15000,
+		timeout: 60000,
 		reconnectAfterMs: (tries: number) => {
-			return Math.min(500 * Math.pow(1.5, tries), 5000); // Fast reconnect: 500ms, 750ms, 1125ms...max 5s
+			return Math.min(300 * Math.pow(1.5, tries), 3000); // faster reconnect: 300ms base, max 3s
 		}
 	},
 	global: {

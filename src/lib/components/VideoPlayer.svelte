@@ -302,7 +302,7 @@
 				}
 
 				const timeDiff = Math.abs(ytTime - lastYtTime);
-				if (timeDiff > 2 && !playerStore.isSyncing) {
+				if (timeDiff > 1.5 && !playerStore.isSyncing) {
 					console.log('⏩ YouTube seek detected:', lastYtTime, '→', ytTime);
 					lastUserSeekAt = Date.now();
 					playerStore.seek(ytTime);
@@ -314,7 +314,7 @@
 					playerStore.currentTime = ytTime;
 				}
 			} catch (e) {}
-		}, 500);
+		}, 250);
 	}
 
 	function startYouTubeSyncCheck() {
@@ -332,23 +332,21 @@
 				const expectedTime = currentTime;
 				const diff = Math.abs(ytTime - expectedTime);
 
-				// Only re-seek for time drift if actually playing — never force-seek a paused video
-				if (isPlaying && diff > 3) {
-					console.log('🔄 FORCE SYNC - Desync detected:', diff, 'seconds');
+				// Correct drift >1s while playing (tighter than before)
+				if (isPlaying && diff > 1) {
+					console.log('🔄 FORCE SYNC - Desync detected:', diff.toFixed(2), 's');
 					youtubePlayer.seekTo(expectedTime, true);
 					lastYtTime = expectedTime;
 				}
 
-				// Enforce play/pause state if drifted
+				// Enforce play/pause state
 				if (isPlaying && state === YT.PlayerState.PAUSED) {
-					console.log('🔄 FORCE SYNC - Video should be playing, resuming');
 					youtubePlayer.playVideo();
 				} else if (!isPlaying && state === YT.PlayerState.PLAYING) {
-					console.log('🔄 FORCE SYNC - Video should be paused, pausing');
 					youtubePlayer.pauseVideo();
 				}
 			} catch (e) {}
-		}, 3000);
+		}, 2000); // check every 2s instead of 3s
 	}
 
 	function syncYouTubePlayer() {
@@ -423,9 +421,8 @@
 					playerStore.duration = duration;
 				}
 
-				// Only detect user-initiated seeks (not programmatic)
 				const timeDiff = Math.abs(videoTime - lastDirectTime);
-				if (timeDiff > 2 && !playerStore.isSyncing && !videoElement.seeking && !isUserSeeking) {
+				if (timeDiff > 1.5 && !playerStore.isSyncing && !videoElement.seeking && !isUserSeeking) {
 					console.log('⏩ Direct video USER seek detected:', lastDirectTime, '→', videoTime);
 					playerStore.seek(videoTime);
 				}
@@ -436,7 +433,7 @@
 					playerStore.currentTime = videoTime;
 				}
 			} catch (e) {}
-		}, 500);
+		}, 250);
 	}
 
 	function startDirectSyncCheck() {
@@ -452,25 +449,21 @@
 				const expectedTime = currentTime;
 				const diff = Math.abs(videoTime - expectedTime);
 
-				// Only re-seek for drift while playing
-				if (isPlaying && diff > 3 && !videoElement.seeking) {
-					console.log('🔄 FORCE SYNC - Desync detected:', diff, 'seconds');
+				if (isPlaying && diff > 1 && !videoElement.seeking) {
+					console.log('🔄 FORCE SYNC - Desync detected:', diff.toFixed(2), 's');
 					videoElement.currentTime = expectedTime;
 					lastDirectTime = expectedTime;
 				}
 
-				// Enforce play/pause state
 				if (isPlaying && videoElement.paused) {
-					console.log('🔄 FORCE SYNC - Video should be playing, resuming');
 					ignoreNextPlayEvent = true;
 					attemptVideoPlay();
 				} else if (!isPlaying && !videoElement.paused) {
-					console.log('🔄 FORCE SYNC - Video should be paused, pausing');
 					ignoreNextPauseEvent = true;
 					videoElement.pause();
 				}
 			} catch (e) {}
-		}, 3000);
+		}, 2000);
 	}
 
 	function syncDirectVideo() {
