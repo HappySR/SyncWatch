@@ -77,6 +77,49 @@
 	let componentMounted = $state(false);
 	let userRequestedEnd = $state(false);
 
+	// Drag state
+let dragContainer: HTMLDivElement | undefined = $state(undefined);
+let isDragging = $state(false);
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+let posX = $state(-1); // -1 means unset, use CSS default
+let posY = $state(-1);
+
+function startDrag(e: MouseEvent | TouchEvent) {
+	if (!dragContainer) return;
+	isDragging = true;
+	const rect = dragContainer.getBoundingClientRect();
+	const clientX = e instanceof MouseEvent ? e.clientX : e.touches[0].clientX;
+	const clientY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
+	dragOffsetX = clientX - rect.left;
+	dragOffsetY = clientY - rect.top;
+
+	const onMove = (ev: MouseEvent | TouchEvent) => {
+		if (!isDragging) return;
+		const cx = ev instanceof MouseEvent ? ev.clientX : ev.touches[0].clientX;
+		const cy = ev instanceof MouseEvent ? ev.clientY : ev.touches[0].clientY;
+		const newX = cx - dragOffsetX;
+		const newY = cy - dragOffsetY;
+		const maxX = window.innerWidth - (dragContainer?.offsetWidth ?? 400);
+		const maxY = window.innerHeight - (dragContainer?.offsetHeight ?? 200);
+		posX = Math.max(0, Math.min(newX, maxX));
+		posY = Math.max(0, Math.min(newY, maxY));
+	};
+
+	const onUp = () => {
+		isDragging = false;
+		window.removeEventListener('mousemove', onMove);
+		window.removeEventListener('mouseup', onUp);
+		window.removeEventListener('touchmove', onMove);
+		window.removeEventListener('touchend', onUp);
+	};
+
+	window.addEventListener('mousemove', onMove);
+	window.addEventListener('mouseup', onUp);
+	window.addEventListener('touchmove', onMove, { passive: false });
+	window.addEventListener('touchend', onUp);
+}
+
 	const channelName = $derived(`syncwatch-${roomStore.currentRoom?.id || 'default'}`);
 	const displayName = $derived(
 		authStore.profile?.display_name || authStore.user?.email?.split('@')[0] || 'Guest'
@@ -511,10 +554,13 @@
 {#if isInCall}
 	<!-- Video call overlay - FIXED BOTTOM RIGHT POSITION -->
 	<div
-		class="fixed z-10000 transition-all duration-300"
-		style={isMinimized
-			? 'right: 16px; bottom: 16px; width: auto; height: auto;'
-			: 'right: 16px; bottom: 16px; width: 400px; max-height: 85vh;'}
+		bind:this={dragContainer}
+		class="fixed z-10000"
+		style={posX >= 0
+			? `left: ${posX}px; top: ${posY}px; ${isMinimized ? 'width: auto; height: auto;' : 'width: 400px; max-height: 85vh;'}`
+			: isMinimized
+				? 'right: 16px; bottom: 16px; width: auto; height: auto;'
+				: 'right: 16px; bottom: 16px; width: 400px; max-height: 85vh;'}
 	>
 		<!-- Expanded Video Call Panel -->
 		<div
@@ -522,7 +568,11 @@
 			style="max-height: 85vh; display: {isMinimized ? 'none' : 'flex'};"
 		>
 			<!-- Header -->
-			<div class="flex items-center justify-between border-b border-white/10 bg-black/90 px-3 py-2">
+			<div
+				class="flex items-center justify-between border-b border-white/10 bg-black/90 px-3 py-2 cursor-grab active:cursor-grabbing select-none"
+				onmousedown={startDrag}
+				ontouchstart={startDrag}
+			>
 				<span class="flex items-center gap-2 text-sm font-medium text-white">
 					<Users class="h-4 w-4" />
 					Video Call ({remoteUsers.size + 1})
@@ -561,9 +611,15 @@
 						class:expanded={expandedVideos.has('local')}
 						style={expandedVideos.has('local') ? 'height: 400px;' : 'height: 150px;'}
 					>
-						<div bind:this={localVideoContainer} class="h-full w-full"></div>
+						<div bind:this={localVideoContainer} class="h-full w-full" style={isVideoOff ? 'display:none;' : ''}></div>
+						{#if isVideoOff}
+							<div class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900">
+								<VideoOff class="h-10 w-10 text-white/40 mb-2" />
+								<span class="text-xs text-white/40">Camera Off</span>
+							</div>
+						{/if}
 						<div class="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs text-white">
-							You {isVideoOff ? '(Video Off)' : ''}
+							You
 						</div>
 						<button
 							onclick={() => toggleExpandVideo('local')}

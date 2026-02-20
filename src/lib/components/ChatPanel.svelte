@@ -231,16 +231,8 @@
 			{/if}
 		</div>
 
-		<!-- Chat Messages - Scrollable container -->
-		<div
-			bind:this={chatContainer}
-			class="relative flex-1 overflow-x-hidden overflow-y-auto scroll-smooth"
-		>
-			<ChatMessages {messages} containerRef={chatContainer} />
-		</div>
-
-		<!-- Message Input -->
-		<div class="border-border bg-surface-hover/30 shrink-0 border-t p-4">
+		<!-- Message Input — shown on TOP for desktop, BOTTOM for mobile -->
+		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-4 hidden md:block">
 			<form
 				onsubmit={(e) => {
 					e.preventDefault();
@@ -271,9 +263,55 @@
 					class="bg-primary hover:bg-primary/90 hover:shadow-primary/50 transform rounded-lg p-2.5 text-white shadow-lg transition-all hover:scale-105 active:scale-95 disabled:transform-none disabled:cursor-not-allowed disabled:bg-gray-500"
 				>
 					{#if isSending}
-						<div
-							class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"
-						></div>
+						<div class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+					{:else}
+						<Send class="h-5 w-5" />
+					{/if}
+				</button>
+			</form>
+			<p class="text-text-muted mt-2 text-xs">Press Enter to send</p>
+		</div>
+
+		<!-- Chat Messages - Scrollable container -->
+		<div 
+			bind:this={chatContainer}
+			class="relative flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
+		>
+			<ChatMessages {messages} containerRef={chatContainer} isDesktop={true} />
+		</div>
+
+		<!-- Message Input — shown on BOTTOM for mobile only -->
+		<div class="border-border bg-surface-hover/30 shrink-0 border-t p-4 md:hidden">
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					sendMessage();
+				}}
+				class="flex gap-2"
+			>
+				<div class="relative flex-1">
+					<input
+						type="text"
+						bind:value={newMessage}
+						oninput={handleInput}
+						placeholder="Type a message..."
+						disabled={isSending}
+						class="bg-input border-border text-text-primary placeholder-text-muted focus:border-primary focus:ring-primary/20 w-full rounded-lg border px-4 py-2.5 text-sm transition-all focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+						maxlength="500"
+					/>
+					{#if isTyping}
+						<div class="text-text-muted absolute top-1/2 right-3 -translate-y-1/2 text-xs">
+							{newMessage.length}/500
+						</div>
+					{/if}
+				</div>
+				<button
+					type="submit"
+					disabled={!newMessage.trim() || isSending}
+					class="bg-primary hover:bg-primary/90 hover:shadow-primary/50 transform rounded-lg p-2.5 text-white shadow-lg transition-all hover:scale-105 active:scale-95 disabled:transform-none disabled:cursor-not-allowed disabled:bg-gray-500"
+				>
+					{#if isSending}
+						<div class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
 					{:else}
 						<Send class="h-5 w-5" />
 					{/if}
