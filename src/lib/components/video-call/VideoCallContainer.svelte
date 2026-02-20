@@ -197,7 +197,10 @@
 		}, 1500);
 
 		const cancelHold = (ev: TouchEvent) => {
-			if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+			if (holdTimer) {
+				clearTimeout(holdTimer);
+				holdTimer = null;
+			}
 			isMobileHolding = false;
 			element.removeEventListener('touchmove', onTouchMoveCancel);
 			element.removeEventListener('touchend', cancelHold);
@@ -864,9 +867,14 @@
 				onclick={toggleMinimize}
 				onmousedown={startMinimizedDrag}
 				ontouchstart={startMinimizedDrag}
-				class="flex items-center gap-2 rounded-full px-3 py-2 text-white shadow-lg backdrop-blur-sm transition-all active:scale-95 select-none
-					{isMobileHolding ? 'bg-green-400 scale-110 ring-2 ring-white/50' : 'bg-green-500/80 hover:scale-105 hover:bg-green-500'}"
-				title="Hold to drag · Tap to expand ({remoteUsers.size + 1} participant{remoteUsers.size !== 0 ? 's' : ''})"
+				class="flex items-center gap-2 rounded-full px-3 py-2 text-white shadow-lg backdrop-blur-sm transition-all select-none active:scale-95
+					{isMobileHolding
+					? 'scale-110 bg-green-400 ring-2 ring-white/50'
+					: 'bg-green-500/80 hover:scale-105 hover:bg-green-500'}"
+				title="Hold to drag · Tap to expand ({remoteUsers.size + 1} participant{remoteUsers.size !==
+				0
+					? 's'
+					: ''})"
 			>
 				<Users class="h-4 w-4" />
 				<span class="text-sm font-medium">{remoteUsers.size + 1}</span>
