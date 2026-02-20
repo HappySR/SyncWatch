@@ -315,7 +315,7 @@ class PlayerStore {
 				this.videoUrl = freshRoom.current_video_url;
 				this.videoType = freshRoom.current_video_type as 'youtube' | 'direct' | null;
 
-				// Calculate actual time if playing
+				// Calculate actual time, compensating for elapsed time if DB says playing
 				let syncTime = freshRoom.video_time || 0;
 				if (freshRoom.is_playing && freshRoom.last_updated) {
 					const elapsed = (Date.now() - new Date(freshRoom.last_updated).getTime()) / 1000;
@@ -323,9 +323,37 @@ class PlayerStore {
 				}
 
 				this.currentTime = syncTime;
-				this.isPlaying = freshRoom.is_playing || false;
 
-				console.log('✅ Synced:', { url: this.videoUrl, time: syncTime });
+				// CRITICAL: Do NOT blindly apply DB is_playing.
+				// The DB can be stale (e.g. everyone paused while we were offline but
+				// the last_updated reflects a playing state).
+				// Cross-check: only start playing if the DB says playing AND
+				// the last_updated is recent enough that someone was actively playing
+				// (within the last 10 seconds), meaning it's a live session.
+				// If the DB says paused, always respect that.
+				if (!freshRoom.is_playing) {
+					// DB says paused — respect it unconditionally
+					this.isPlaying = false;
+				} else {
+					// DB says playing — only trust it if the update is fresh (within 10s)
+					// If last_updated is older than 10s, the room may have gone idle and
+					// the DB state is stale; keep our current isPlaying state instead
+					const lastUpdatedMs = freshRoom.last_updated
+						? Date.now() - new Date(freshRoom.last_updated).getTime()
+						: Infinity;
+
+					if (lastUpdatedMs < 10000) {
+						// Fresh — someone was actively controlling playback, trust it
+						this.isPlaying = true;
+					} else {
+						// Stale — don't auto-start; preserve whatever state we had
+						// This prevents auto-play when rejoining a long-idle room
+						console.log('⏸️ DB is_playing=true but stale — not auto-starting');
+						this.isPlaying = false;
+					}
+				}
+
+				console.log('✅ Synced:', { url: this.videoUrl, time: syncTime, isPlaying: this.isPlaying });
 			}
 
 			if (roomStore.currentRoom.id) {
