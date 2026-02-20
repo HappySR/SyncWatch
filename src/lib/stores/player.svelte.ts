@@ -157,8 +157,6 @@ class PlayerStore {
 	updateRoomStateInBackground(type: string, data: any) {
 		if (!roomStore.currentRoom) return;
 
-		// Seek events are very frequent — debounce DB writes to max 1 per second
-		// Play/pause/change_video always write immediately
 		if (type === 'seek') {
 			if (this.seekDbDebounce) clearTimeout(this.seekDbDebounce);
 			this.seekDbDebounce = setTimeout(() => {
@@ -179,14 +177,36 @@ class PlayerStore {
 				updates.video_time = data.time ?? this.currentTime;
 				break;
 			case 'change_video':
-				updates.current_video_url = data.url;
-				updates.current_video_type = data.videoType;
-				updates.video_time = 0;
-				updates.is_playing = false;
-				break;
+				// Awaited separately — must complete before anyone joining can sync
+				this.writeNewVideoToRoom(data.url, data.videoType);
+				return;
 		}
 
 		this.writeRoomState(updates);
+	}
+
+	private async writeNewVideoToRoom(url: string, videoType: string) {
+		if (!roomStore.currentRoom) return;
+
+		// Wipe ALL playback state atomically when a new video is loaded.
+		// This ensures any new joiner calling syncWithRoom sees only the new video
+		// with time=0 and is_playing=false — never the old video or a stale timestamp.
+		const { error } = await supabase
+			.from('rooms')
+			.update({
+				current_video_url: url,
+				current_video_type: videoType,
+				video_time: 0,
+				is_playing: false,
+				last_updated: new Date().toISOString()
+			})
+			.eq('id', roomStore.currentRoom.id);
+
+		if (error) {
+			console.error('❌ Failed to save new video to DB:', error);
+		} else {
+			console.log('✅ New video saved to DB:', url);
+		}
 	}
 
 	private writeRoomState(updates: any) {
