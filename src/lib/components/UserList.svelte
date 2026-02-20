@@ -7,9 +7,34 @@
 
 	let { isHost } = $props<{ isHost: boolean }>();
 	let isLeaving = $state(false);
+	let togglingMemberIds = $state<Set<string>>(new Set());
 
 	async function toggleControls(memberId: string, currentState: boolean) {
-		await roomStore.toggleMemberControls(memberId, !currentState);
+		if (togglingMemberIds.has(memberId)) return;
+
+		// Optimistic update — flip immediately in UI
+		const member = roomStore.members.find(m => m.id === memberId);
+		if (member) {
+			member.has_controls = !currentState;
+			roomStore.members = [...roomStore.members];
+		}
+
+		togglingMemberIds.add(memberId);
+		togglingMemberIds = new Set(togglingMemberIds);
+
+		try {
+			await roomStore.toggleMemberControls(memberId, !currentState);
+		} catch (err) {
+			// Revert on failure
+			if (member) {
+				member.has_controls = currentState;
+				roomStore.members = [...roomStore.members];
+			}
+			console.error('Failed to toggle controls:', err);
+		} finally {
+			togglingMemberIds.delete(memberId);
+			togglingMemberIds = new Set(togglingMemberIds);
+		}
 	}
 
 	async function leaveRoom() {
@@ -109,12 +134,17 @@
 				{#if isHost && !isRoomHost}
 					<button
 						onclick={() => toggleControls(member.id, member.has_controls)}
-						class="rounded px-3 py-1 text-xs transition
-              {member.has_controls
-							? 'bg-green-500/20 text-green-400'
-							: 'bg-orange-500/20 text-orange-400'}"
+						disabled={togglingMemberIds.has(member.id)}
+						class="rounded px-3 py-1 text-xs transition disabled:opacity-50 disabled:cursor-not-allowed
+							{member.has_controls
+								? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+								: 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'}"
 					>
-						{member.has_controls ? 'Revoke' : 'Grant'}
+						{#if togglingMemberIds.has(member.id)}
+							<div class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></div>
+						{:else}
+							{member.has_controls ? 'Revoke' : 'Grant'}
+						{/if}
 					</button>
 				{/if}
 			</div>

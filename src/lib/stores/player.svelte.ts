@@ -69,6 +69,7 @@ class PlayerStore {
 		switch (event.type) {
 			case 'play':
 				this.isPlaying = true;
+				this.lastPlayPauseEventAt = Date.now();
 				if (event.time !== undefined) {
 					this.currentTime = event.time;
 				}
@@ -76,6 +77,7 @@ class PlayerStore {
 
 			case 'pause':
 				this.isPlaying = false;
+				this.lastPlayPauseEventAt = Date.now();
 				if (event.time !== undefined) {
 					this.currentTime = event.time;
 				}
@@ -182,12 +184,14 @@ class PlayerStore {
 	async play() {
 		if (!this.canControl()) return;
 		this.isPlaying = true;
+		this.lastPlayPauseEventAt = Date.now();
 		await this.broadcastEvent('play', { time: this.currentTime });
 	}
 
 	async pause() {
 		if (!this.canControl()) return;
 		this.isPlaying = false;
+		this.lastPlayPauseEventAt = Date.now();
 		await this.broadcastEvent('pause', { time: this.currentTime });
 	}
 
@@ -229,12 +233,21 @@ class PlayerStore {
 
 	private syncInProgress = false;
 	private lastSyncAt = 0;
+	private lastPlayPauseEventAt = 0;
 
 	async syncWithRoom() {
 		if (!roomStore.currentRoom) return;
 
-		// Debounce: ignore if a sync happened in the last 3 seconds
 		const now = Date.now();
+
+		// Never sync if a play/pause event just arrived — the realtime event is more accurate
+		// than the DB which may not have caught up yet
+		if (now - this.lastPlayPauseEventAt < 5000) {
+			console.log('⏭️ syncWithRoom skipped — recent play/pause event takes priority');
+			return;
+		}
+
+		// Debounce: ignore if a sync happened in the last 3 seconds
 		if (this.syncInProgress || now - this.lastSyncAt < 3000) {
 			console.log('⏭️ syncWithRoom skipped — too soon or already in progress');
 			return;

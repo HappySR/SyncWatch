@@ -255,13 +255,6 @@ class RoomStore {
 			})
 			.on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
 				console.log('✅ User joined presence:', key);
-				// If the returning user is the current user, trigger video re-sync
-				if (key === authStore.user?.id) {
-					console.log('🔄 Current user returned online — triggering video sync');
-					import('./player.svelte').then(({ playerStore }) => {
-						playerStore.syncWithRoom();
-					});
-				}
 			})
 			.on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
 				console.log('👋 User left presence:', key);
