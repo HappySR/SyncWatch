@@ -178,7 +178,7 @@
 <!-- Regular Chat Panel (Non-Fullscreen) -->
 {#if !isFullscreen}
 	<div
-		class="bg-surface border-border flex h-full min-h-125 flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
+		class="bg-surface border-border flex h-full flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
 	>
 		<!-- Chat Header -->
 		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-3">
