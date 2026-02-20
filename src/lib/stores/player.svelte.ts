@@ -73,8 +73,8 @@ class PlayerStore {
 				if (event.time !== undefined) {
 					// Compensate: video was playing on sender's side since sentAt,
 					// so we add the transit time to stay in sync
-					const transitMs = event.sentAt ? (Date.now() - event.sentAt) : 0;
-					const compensated = event.time + (transitMs / 1000);
+					const transitMs = event.sentAt ? Date.now() - event.sentAt : 0;
+					const compensated = event.time + transitMs / 1000;
 					this.currentTime = compensated;
 				}
 				break;
@@ -92,10 +92,8 @@ class PlayerStore {
 			case 'seek':
 				if (event.time !== undefined) {
 					// Partial compensation on seek — sender may have kept playing briefly
-					const transitMs = event.sentAt ? (Date.now() - event.sentAt) : 0;
-					this.currentTime = this.isPlaying
-						? event.time + (transitMs / 1000)
-						: event.time;
+					const transitMs = event.sentAt ? Date.now() - event.sentAt : 0;
+					this.currentTime = this.isPlaying ? event.time + transitMs / 1000 : event.time;
 				}
 				break;
 
@@ -373,7 +371,11 @@ class PlayerStore {
 					}
 				}
 
-				console.log('✅ Synced:', { url: this.videoUrl, time: syncTime, isPlaying: this.isPlaying });
+				console.log('✅ Synced:', {
+					url: this.videoUrl,
+					time: syncTime,
+					isPlaying: this.isPlaying
+				});
 			}
 
 			if (roomStore.currentRoom.id) {

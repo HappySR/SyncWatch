@@ -13,7 +13,7 @@
 		if (togglingMemberIds.has(memberId)) return;
 
 		// Optimistic update — flip immediately in UI
-		const member = roomStore.members.find(m => m.id === memberId);
+		const member = roomStore.members.find((m) => m.id === memberId);
 		if (member) {
 			member.has_controls = !currentState;
 			roomStore.members = [...roomStore.members];
@@ -135,13 +135,15 @@
 					<button
 						onclick={() => toggleControls(member.id, member.has_controls)}
 						disabled={togglingMemberIds.has(member.id)}
-						class="rounded px-3 py-1 text-xs transition disabled:opacity-50 disabled:cursor-not-allowed
+						class="rounded px-3 py-1 text-xs transition disabled:cursor-not-allowed disabled:opacity-50
 							{member.has_controls
-								? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-								: 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'}"
+							? 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+							: 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'}"
 					>
 						{#if togglingMemberIds.has(member.id)}
-							<div class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></div>
+							<div
+								class="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
+							></div>
 						{:else}
 							{member.has_controls ? 'Revoke' : 'Grant'}
 						{/if}
