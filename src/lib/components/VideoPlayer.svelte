@@ -107,7 +107,15 @@
 			(videoType === 'direct' && isDirectVideoReady) || (videoType === 'youtube' && isYouTubeReady);
 		if (!hasVideo) return;
 
-		if (e.key === 'ArrowLeft') {
+		if (e.key === ' ' || e.key === 'Spacebar') {
+			e.preventDefault();
+			if (!playerStore.canControl()) return;
+			if (playerStore.isPlaying) {
+				playerStore.pause();
+			} else {
+				playerStore.play();
+			}
+		} else if (e.key === 'ArrowLeft') {
 			e.preventDefault();
 			handleSkip(-10);
 		} else if (e.key === 'ArrowRight') {
@@ -318,14 +326,26 @@
 			if (roomStore.members.filter((m) => m.is_online).length < 2) return;
 
 			try {
+				const state = youtubePlayer.getPlayerState();
+				const YT = (window as any).YT;
 				const ytTime = youtubePlayer.getCurrentTime();
 				const expectedTime = currentTime;
 				const diff = Math.abs(ytTime - expectedTime);
 
-				if (diff > 2) {
+				// Only re-seek for time drift if actually playing — never force-seek a paused video
+				if (isPlaying && diff > 3) {
 					console.log('🔄 FORCE SYNC - Desync detected:', diff, 'seconds');
 					youtubePlayer.seekTo(expectedTime, true);
 					lastYtTime = expectedTime;
+				}
+
+				// Enforce play/pause state if drifted
+				if (isPlaying && state === YT.PlayerState.PAUSED) {
+					console.log('🔄 FORCE SYNC - Video should be playing, resuming');
+					youtubePlayer.playVideo();
+				} else if (!isPlaying && state === YT.PlayerState.PLAYING) {
+					console.log('🔄 FORCE SYNC - Video should be paused, pausing');
+					youtubePlayer.pauseVideo();
 				}
 			} catch (e) {}
 		}, 3000);
@@ -348,12 +368,25 @@
 			}
 
 			const YT = (window as any).YT;
-			if (isPlaying && state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING) {
-				console.log('▶️ Starting YouTube playback');
-				youtubePlayer.playVideo();
-			} else if (!isPlaying && state === YT.PlayerState.PLAYING) {
-				console.log('⏸️ Pausing YouTube playback');
-				youtubePlayer.pauseVideo();
+			if (isPlaying) {
+				// Always try to play — seekTo + playVideo is idempotent and safe
+				if (state !== YT.PlayerState.PLAYING) {
+					console.log('▶️ Starting YouTube playback');
+					youtubePlayer.playVideo();
+				}
+			} else {
+				// Must pause — including if buffering after a seek
+				if (state === YT.PlayerState.PLAYING || state === YT.PlayerState.BUFFERING) {
+					console.log('⏸️ Pausing YouTube playback');
+					youtubePlayer.pauseVideo();
+					// Re-check after buffer resolves to ensure it stays paused
+					setTimeout(() => {
+						const s = youtubePlayer?.getPlayerState();
+						if (!isPlaying && s === YT.PlayerState.PLAYING) {
+							youtubePlayer.pauseVideo();
+						}
+					}, 600);
+				}
 			}
 		} catch (e) {
 			console.log('Sync error:', e);
@@ -419,10 +452,22 @@
 				const expectedTime = currentTime;
 				const diff = Math.abs(videoTime - expectedTime);
 
-				if (diff > 2 && !videoElement.seeking) {
+				// Only re-seek for drift while playing
+				if (isPlaying && diff > 3 && !videoElement.seeking) {
 					console.log('🔄 FORCE SYNC - Desync detected:', diff, 'seconds');
 					videoElement.currentTime = expectedTime;
 					lastDirectTime = expectedTime;
+				}
+
+				// Enforce play/pause state
+				if (isPlaying && videoElement.paused) {
+					console.log('🔄 FORCE SYNC - Video should be playing, resuming');
+					ignoreNextPlayEvent = true;
+					attemptVideoPlay();
+				} else if (!isPlaying && !videoElement.paused) {
+					console.log('🔄 FORCE SYNC - Video should be paused, pausing');
+					ignoreNextPauseEvent = true;
+					videoElement.pause();
 				}
 			} catch (e) {}
 		}, 3000);

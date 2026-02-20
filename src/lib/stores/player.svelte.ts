@@ -54,7 +54,10 @@ class PlayerStore {
 			return;
 		}
 
-		if (this.isProcessingEvent && event.type !== 'change_video') {
+		// Allow play/pause to always get through — they must be authoritative
+		const isAuthoritative =
+			event.type === 'play' || event.type === 'pause' || event.type === 'change_video';
+		if (this.isProcessingEvent && !isAuthoritative) {
 			return;
 		}
 
@@ -63,47 +66,52 @@ class PlayerStore {
 		this.isProcessingEvent = true;
 		this.isSyncing = true;
 
-		try {
-			switch (event.type) {
-				case 'play':
-					this.isPlaying = true;
-					if (event.time !== undefined) {
-						this.currentTime = event.time;
-					}
-					break;
+		switch (event.type) {
+			case 'play':
+				this.isPlaying = true;
+				if (event.time !== undefined) {
+					this.currentTime = event.time;
+				}
+				break;
 
-				case 'pause':
+			case 'pause':
+				this.isPlaying = false;
+				if (event.time !== undefined) {
+					this.currentTime = event.time;
+				}
+				break;
+
+			case 'seek':
+				if (event.time !== undefined) {
+					this.currentTime = event.time;
+				}
+				break;
+
+			case 'change_video':
+				console.log('📺 Video change received:', event.url);
+				if (event.url) {
+					this.videoUrl = event.url;
+					this.videoType = event.videoType || this.detectVideoType(event.url);
+					this.currentTime = 0;
 					this.isPlaying = false;
-					if (event.time !== undefined) {
-						this.currentTime = event.time;
-					}
-					break;
-
-				case 'seek':
-					if (event.time !== undefined) {
-						this.currentTime = event.time;
-					}
-					break;
-
-				case 'change_video':
-					console.log('📺 Video change received:', event.url);
-					if (event.url) {
-						this.videoUrl = event.url;
-						this.videoType = event.videoType || this.detectVideoType(event.url);
-						this.currentTime = 0;
-						this.isPlaying = false;
-					}
-					break;
-			}
-		} finally {
-			setTimeout(
-				() => {
-					this.isSyncing = false;
-					this.isProcessingEvent = false;
-				},
-				event.type === 'change_video' ? 1500 : 50
-			);
+				}
+				break;
 		}
+
+		// For play/pause: hold the sync lock longer so the player has time to actually act on it
+		// For seek: 300ms is enough
+		// For change_video: 1500ms
+		const lockDuration =
+			event.type === 'change_video'
+				? 1500
+				: event.type === 'play' || event.type === 'pause'
+					? 800
+					: 300;
+
+		setTimeout(() => {
+			this.isSyncing = false;
+			this.isProcessingEvent = false;
+		}, lockDuration);
 	}
 
 	detectVideoType(url: string): 'youtube' | 'direct' {
@@ -219,9 +227,21 @@ class PlayerStore {
 		return member?.has_controls ?? false;
 	}
 
+	private syncInProgress = false;
+	private lastSyncAt = 0;
+
 	async syncWithRoom() {
 		if (!roomStore.currentRoom) return;
 
+		// Debounce: ignore if a sync happened in the last 3 seconds
+		const now = Date.now();
+		if (this.syncInProgress || now - this.lastSyncAt < 3000) {
+			console.log('⏭️ syncWithRoom skipped — too soon or already in progress');
+			return;
+		}
+
+		this.syncInProgress = true;
+		this.lastSyncAt = now;
 		console.log('🔄 Syncing with room...');
 		this.isSyncing = true;
 
@@ -255,6 +275,7 @@ class PlayerStore {
 		} finally {
 			setTimeout(() => {
 				this.isSyncing = false;
+				this.syncInProgress = false;
 			}, 1500);
 		}
 	}
