@@ -14,7 +14,11 @@
 		};
 	}
 
-	let { messages, containerRef, isDesktop = false } = $props<{
+	let {
+		messages,
+		containerRef,
+		isDesktop = false
+	} = $props<{
 		messages: ChatMessage[];
 		containerRef?: HTMLDivElement;
 		isDesktop?: boolean;
@@ -93,7 +97,7 @@
 		if (containerRef) {
 			containerRef.addEventListener('scroll', handleScroll);
 			// Initial scroll
-			setTimeout(() => isDesktop ? scrollToTop(false) : scrollToBottom(false), 100);
+			setTimeout(() => (isDesktop ? scrollToTop(false) : scrollToBottom(false)), 100);
 		}
 
 		return () => {
@@ -128,7 +132,7 @@
 				</div>
 			</div>
 		{:else}
-			{#each (isDesktop ? [...messages].reverse() : messages) as message (message.id)}
+			{#each isDesktop ? [...messages].reverse() : messages as message (message.id)}
 				{@const isOwnMessage = message.user_id === authStore.user?.id}
 				<div
 					class="animate-in slide-in-from-bottom-4 flex gap-2 duration-300"
@@ -175,8 +179,10 @@
 	<!-- Scroll to latest Button -->
 	{#if showScrollButton}
 		<button
-			onclick={() => isDesktop ? scrollToTop(true) : scrollToBottom(true)}
-			class="bg-primary absolute right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full text-black shadow-2xl transition-all hover:scale-110 hover:shadow-purple-500/50 active:scale-95 {isDesktop ? 'top-4' : 'bottom-4'}"
+			onclick={() => (isDesktop ? scrollToTop(true) : scrollToBottom(true))}
+			class="bg-primary absolute right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full text-black shadow-2xl transition-all hover:scale-110 hover:shadow-purple-500/50 active:scale-95 {isDesktop
+				? 'top-4'
+				: 'bottom-4'}"
 			title={isDesktop ? 'Scroll to latest' : 'Scroll to bottom'}
 			aria-label={isDesktop ? 'Scroll to latest' : 'Scroll to bottom'}
 		>

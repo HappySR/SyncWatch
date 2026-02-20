@@ -232,7 +232,7 @@
 		</div>
 
 		<!-- Message Input — shown on TOP for desktop, BOTTOM for mobile -->
-		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-4 hidden md:block">
+		<div class="border-border bg-surface-hover/30 hidden shrink-0 border-b p-4 md:block">
 			<form
 				onsubmit={(e) => {
 					e.preventDefault();
@@ -263,7 +263,9 @@
 					class="bg-primary hover:bg-primary/90 hover:shadow-primary/50 transform rounded-lg p-2.5 text-white shadow-lg transition-all hover:scale-105 active:scale-95 disabled:transform-none disabled:cursor-not-allowed disabled:bg-gray-500"
 				>
 					{#if isSending}
-						<div class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+						<div
+							class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"
+						></div>
 					{:else}
 						<Send class="h-5 w-5" />
 					{/if}
@@ -273,9 +275,9 @@
 		</div>
 
 		<!-- Chat Messages - Scrollable container -->
-		<div 
+		<div
 			bind:this={chatContainer}
-			class="relative flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
+			class="relative flex-1 overflow-x-hidden overflow-y-auto scroll-smooth"
 		>
 			<ChatMessages {messages} containerRef={chatContainer} isDesktop={true} />
 		</div>
@@ -311,7 +313,9 @@
 					class="bg-primary hover:bg-primary/90 hover:shadow-primary/50 transform rounded-lg p-2.5 text-white shadow-lg transition-all hover:scale-105 active:scale-95 disabled:transform-none disabled:cursor-not-allowed disabled:bg-gray-500"
 				>
 					{#if isSending}
-						<div class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+						<div
+							class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"
+						></div>
 					{:else}
 						<Send class="h-5 w-5" />
 					{/if}
