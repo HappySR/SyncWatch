@@ -163,7 +163,7 @@ class ThemeStore {
 			ocean: 'Ocean Blue',
 			sunset: 'Sunset Orange',
 			forest: 'Forest Green',
-			zebra: "Zebra"
+			zebra: "Zebra's Stripes"
 		};
 		return names[theme];
 	}
