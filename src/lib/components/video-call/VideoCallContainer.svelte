@@ -150,7 +150,7 @@
 			// Vibrate if supported
 			if (navigator.vibrate) navigator.vibrate(60);
 			executeDrag(element, startX, startY);
-		}, 1500);
+		}, 1000);
 
 		// Cancel hold if finger moves too much or lifts
 		const cancelHold = (ev: TouchEvent) => {
@@ -194,7 +194,7 @@
 			isMobileHolding = false;
 			if (navigator.vibrate) navigator.vibrate(60);
 			executeDrag(element, startX, startY);
-		}, 1500);
+		}, 1000);
 
 		const cancelHold = (ev: TouchEvent) => {
 			if (holdTimer) {
