@@ -136,29 +136,7 @@ Enable Row Level Security and add appropriate policies for each table so authent
 
 ### 5. Set up Agora token server
 
-SyncWatch requires a server-side Agora token endpoint at `POST /api/agora-token`. Create `src/routes/api/agora-token/+server.ts`:
-
-```ts
-import { json } from '@sveltejs/kit';
-import { RtcTokenBuilder, RtcRole } from 'agora-token';
-import { AGORA_APP_CERTIFICATE } from '$env/static/private';
-import { PUBLIC_AGORA_APP_ID } from '$env/static/public';
-
-export async function POST({ request }) {
-  const { channelName, uid } = await request.json();
-
-  const token = RtcTokenBuilder.buildTokenWithUid(
-    PUBLIC_AGORA_APP_ID,
-    AGORA_APP_CERTIFICATE,
-    channelName,
-    Number(uid),
-    RtcRole.PUBLISHER,
-    Math.floor(Date.now() / 1000) + 3600
-  );
-
-  return json({ token });
-}
-```
+SyncWatch requires a server-side Agora token endpoint at `POST /api/agora-token`. There is `src/routes/api/agora-token/+server.ts`
 
 Add `AGORA_APP_CERTIFICATE` to your `.env` file (this is a server-only secret, no `PUBLIC_` prefix).
 
