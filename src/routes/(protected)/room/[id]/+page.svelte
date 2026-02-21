@@ -83,8 +83,9 @@
 			console.log('Current room:', roomStore.currentRoom);
 			console.log('Current members:', roomStore.members);
 
-			// Sync player
+			// Sync player — reset debounce state so a fresh join always syncs
 			console.log('=== SYNCING PLAYER ===');
+			playerStore.resetSyncState();
 			await playerStore.syncWithRoom();
 			console.log('✅ Player synced');
 

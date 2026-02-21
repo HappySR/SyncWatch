@@ -109,12 +109,15 @@ class RoomStore {
 
 			const { data: existingMember } = await supabase
 				.from('room_members')
-				.select('id')
+				.select('id, is_banned')
 				.eq('room_id', roomId)
 				.eq('user_id', authStore.user.id)
 				.maybeSingle();
 
 			if (existingMember) {
+				if ((existingMember as any).is_banned) {
+					throw new Error('You have been banned from this room.');
+				}
 				console.log('3️⃣ Already a member, loading room...');
 				await this.loadRoom(roomId);
 				this.subscribeToRoom(roomId);
@@ -446,6 +449,19 @@ class RoomStore {
 				async (payload) => {
 					console.log('🔄 Member updated:', payload.new);
 					const updatedMember = payload.new as RoomMember;
+
+					// If the current user was just banned, kick them out immediately
+					if (
+						updatedMember.user_id === authStore.user?.id &&
+						updatedMember.is_banned === true
+					) {
+						console.log('🚫 Current user was banned — redirecting to dashboard');
+						this.leaveRoom();
+						// Dynamic import to avoid circular deps
+						import('$app/navigation').then(({ goto }) => goto('/dashboard?banned=1'));
+						return;
+					}
+
 					const index = this.members.findIndex((m) => m.id === updatedMember.id);
 					if (index !== -1) {
 						this.members[index] = { ...this.members[index], ...updatedMember };

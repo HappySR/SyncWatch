@@ -48,6 +48,12 @@ class PlayerStore {
 		}
 	}
 
+	resetSyncState() {
+		this.syncInProgress = false;
+		this.lastSyncAt = 0;
+		this.lastPlayPauseEventAt = 0;
+	}
+
 	handleRealtimeEvent(event: any) {
 		// Skip own events except video changes
 		if (event.userId === authStore.user?.id && event.type !== 'change_video') {
@@ -175,8 +181,7 @@ class PlayerStore {
 				updates.video_time = data.time ?? this.currentTime;
 				break;
 			case 'change_video':
-				// Awaited separately — must complete before anyone joining can sync
-				this.writeNewVideoToRoom(data.url, data.videoType);
+				// Already written to DB in changeVideo() before broadcast — skip here
 				return;
 		}
 
@@ -284,7 +289,11 @@ class PlayerStore {
 		this.currentTime = 0;
 		this.isPlaying = false;
 
-		// Broadcast to all users instantly
+		// Write to DB FIRST so any joiner who arrives after the broadcast
+		// reads the correct video URL from the rooms table
+		await this.writeNewVideoToRoom(url, type);
+
+		// Then broadcast to connected peers
 		await this.broadcastEvent('change_video', { url, videoType: type });
 	}
 

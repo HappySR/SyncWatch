@@ -17,23 +17,15 @@
 	async function toggleControls(memberId: string, currentState: boolean) {
 		if (togglingMemberIds.has(memberId)) return;
 
-		const member = roomStore.members.find((m) => m.id === memberId);
-		if (member) {
-			member.has_controls = !currentState;
-			roomStore.members = [...roomStore.members];
-		}
-
 		togglingMemberIds.add(memberId);
 		togglingMemberIds = new Set(togglingMemberIds);
 
 		try {
 			await roomStore.toggleMemberControls(memberId, !currentState);
+			// UI updates automatically via the postgres_changes subscription in room.svelte.ts
 		} catch (err) {
-			if (member) {
-				member.has_controls = currentState;
-				roomStore.members = [...roomStore.members];
-			}
 			console.error('Failed to toggle controls:', err);
+			alert('Failed to update controls. Please try again.');
 		} finally {
 			togglingMemberIds.delete(memberId);
 			togglingMemberIds = new Set(togglingMemberIds);
@@ -43,24 +35,15 @@
 	async function banMember(memberId: string) {
 		if (banningMemberIds.has(memberId)) return;
 
-		const member = roomStore.members.find((m) => m.id === memberId);
-		if (member) {
-			member.is_banned = true;
-			member.has_controls = false;
-			roomStore.members = [...roomStore.members];
-		}
-
 		banningMemberIds.add(memberId);
 		banningMemberIds = new Set(banningMemberIds);
 
 		try {
 			await roomStore.banMember(memberId);
+			// UI updates automatically via the postgres_changes subscription
 		} catch (err) {
-			if (member) {
-				member.is_banned = false;
-				roomStore.members = [...roomStore.members];
-			}
 			console.error('Failed to ban member:', err);
+			alert('Failed to ban member. Please try again.');
 		} finally {
 			banningMemberIds.delete(memberId);
 			banningMemberIds = new Set(banningMemberIds);
@@ -70,23 +53,15 @@
 	async function unbanMember(memberId: string) {
 		if (banningMemberIds.has(memberId)) return;
 
-		const member = roomStore.members.find((m) => m.id === memberId);
-		if (member) {
-			member.is_banned = false;
-			roomStore.members = [...roomStore.members];
-		}
-
 		banningMemberIds.add(memberId);
 		banningMemberIds = new Set(banningMemberIds);
 
 		try {
 			await roomStore.unbanMember(memberId);
+			// UI updates automatically via the postgres_changes subscription
 		} catch (err) {
-			if (member) {
-				member.is_banned = true;
-				roomStore.members = [...roomStore.members];
-			}
 			console.error('Failed to unban member:', err);
+			alert('Failed to unban member. Please try again.');
 		} finally {
 			banningMemberIds.delete(memberId);
 			banningMemberIds = new Set(banningMemberIds);
