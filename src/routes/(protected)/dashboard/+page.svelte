@@ -16,7 +16,6 @@
 	let isJoining = $state(false);
 	let isCreating = $state(false);
 	let mounted = $state(false);
-	let autoRefreshInterval: any = null;
 
 	onMount(async () => {
 		mounted = true;
@@ -35,23 +34,10 @@
 
 		// Initial load
 		await loadRooms();
-
-		// CRITICAL: Auto-refresh rooms every 30 seconds to keep connection alive
-		autoRefreshInterval = setInterval(() => {
-			if (mounted && !loading && authStore.user) {
-				console.log('🔄 Auto-refreshing rooms...');
-				loadRooms().catch((err) => {
-					console.warn('⚠️ Auto-refresh failed:', err);
-				});
-			}
-		}, 30000);
 	});
 
 	onDestroy(() => {
 		mounted = false;
-		if (autoRefreshInterval) {
-			clearInterval(autoRefreshInterval);
-		}
 	});
 
 	// Redirect if user logs out
