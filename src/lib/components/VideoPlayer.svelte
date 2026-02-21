@@ -37,6 +37,8 @@
 	let containerElement: HTMLDivElement | undefined = $state(undefined);
 	let isVideoLoading = $state(false);
 	let showFullscreenButton = $state(false);
+	let showVolumeSlider = $state(false);
+	let volumeSliderTimeout: any = null;
 
 	// Double-tap seek states
 	let lastTapTime = 0;
@@ -80,6 +82,18 @@
 		document.removeEventListener('fullscreenchange', handleFullscreenChange);
 		document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
 		document.removeEventListener('keydown', handleGlobalKeydown);
+		if (volumeSliderTimeout) clearTimeout(volumeSliderTimeout);
+	});
+
+	// Apply volume whenever it changes
+	$effect(() => {
+		const vol = playerStore.volume;
+		if (videoType === 'youtube' && isYouTubeReady && youtubePlayer?.setVolume) {
+			youtubePlayer.setVolume(Math.round(vol * 100));
+		}
+		if (videoType === 'direct' && videoElement) {
+			videoElement.volume = vol;
+		}
 	});
 
 	function cleanup() {
@@ -691,6 +705,25 @@
 		}
 	}
 
+	function toggleVolumeSlider() {
+		if (playerStore.volume === 0) {
+			playerStore.setVolume(1);
+			showVolumeSlider = true;
+		} else {
+			showVolumeSlider = !showVolumeSlider;
+		}
+		if (volumeSliderTimeout) clearTimeout(volumeSliderTimeout);
+		if (showVolumeSlider) {
+			volumeSliderTimeout = setTimeout(() => { showVolumeSlider = false; }, 3000);
+		}
+	}
+
+	function handleVolumeInput(e: Event) {
+		playerStore.setVolume(parseFloat((e.target as HTMLInputElement).value));
+		if (volumeSliderTimeout) clearTimeout(volumeSliderTimeout);
+		volumeSliderTimeout = setTimeout(() => { showVolumeSlider = false; }, 3000);
+	}
+
 	function handleUserInteraction() {
 		hasUserInteracted = true;
 		if (pendingPlayRequest && videoElement && isPlaying) {
@@ -828,21 +861,60 @@
 		{/if}
 	</div>
 
-	<!-- External Fullscreen Button -->
-	<button
-		onclick={toggleFullscreen}
-		class="absolute right-0 -bottom-12 z-40 rounded-lg bg-black/80 p-3 text-white backdrop-blur-sm transition-all hover:bg-black
-			{isFullscreen ? 'opacity-0 hover:opacity-100' : 'opacity-100'}"
-		class:fullscreen-button-hidden={isFullscreen && !showFullscreenButton}
-		title="Toggle Fullscreen (or press F)"
-		aria-label="Toggle Fullscreen"
-	>
-		{#if isFullscreen}
-			<Minimize class="h-5 w-5" />
-		{:else}
-			<Maximize class="h-5 w-5" />
-		{/if}
-	</button>
+	<!-- Volume + Fullscreen Buttons -->
+	<div class="absolute right-0 -bottom-12 z-40 flex items-center gap-2">
+		<!-- Volume Control -->
+		<div class="flex items-center gap-2">
+			{#if showVolumeSlider}
+				<div class="flex items-center gap-2 rounded-lg bg-black/80 px-3 py-2 backdrop-blur-sm">
+					<span class="text-xs text-white/50 shrink-0">Video</span>
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.02"
+						value={playerStore.volume}
+						oninput={handleVolumeInput}
+						class="h-1 w-24 cursor-pointer accent-white"
+						aria-label="Video volume"
+					/>
+					<span class="w-8 text-right text-xs text-white/70">
+						{Math.round(playerStore.volume * 100)}%
+					</span>
+				</div>
+			{/if}
+			<button
+				onclick={toggleVolumeSlider}
+				class="rounded-lg bg-black/80 p-3 text-white backdrop-blur-sm transition-all hover:bg-black"
+				title="Volume"
+				aria-label="Volume"
+			>
+				{#if playerStore.volume === 0}
+					<VolumeX class="h-5 w-5" />
+				{:else if playerStore.volume < 0.5}
+					<Volume1 class="h-5 w-5" />
+				{:else}
+					<Volume2 class="h-5 w-5" />
+				{/if}
+			</button>
+		</div>
+
+		<!-- Fullscreen Button -->
+		<button
+			onclick={toggleFullscreen}
+			class="rounded-lg bg-black/80 p-3 text-white backdrop-blur-sm transition-all hover:bg-black
+				{isFullscreen ? 'opacity-0 hover:opacity-100' : 'opacity-100'}"
+			class:fullscreen-button-hidden={isFullscreen && !showFullscreenButton}
+			title="Toggle Fullscreen (or press F)"
+			aria-label="Toggle Fullscreen"
+		>
+			{#if isFullscreen}
+				<Minimize class="h-5 w-5" />
+			{:else}
+				<Maximize class="h-5 w-5" />
+			{/if}
+		</button>
+	</div>
 </div>
 
 <style>

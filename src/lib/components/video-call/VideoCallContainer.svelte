@@ -26,6 +26,7 @@
 		type IRemoteAudioTrack
 	} from 'agora-rtc-sdk-ng';
 	import { PUBLIC_AGORA_APP_ID } from '$env/static/public';
+	import { playerStore } from '$lib/stores/player.svelte';
 
 	interface CallInvitation {
 		from: string;
@@ -60,6 +61,7 @@
 	let localVideoContainer: HTMLDivElement | undefined = $state(undefined);
 
 	// Settings
+	let callVolume = $state(1);
 	let selectedCamera = $state<string>('');
 	let selectedMicrophone = $state<string>('');
 	let cameras = $state<MediaDeviceInfo[]>([]);
@@ -295,6 +297,14 @@
 		window.addEventListener('touchend', onUp);
 	}
 
+	// Sync call volume with playerStore.volume whenever it changes
+	$effect(() => {
+		const vol = playerStore.volume;
+		remoteUsers.forEach((user) => {
+			user.audioTrack?.setVolume(Math.round(vol * 100));
+		});
+	});
+
 	const channelName = $derived(`syncwatch-${roomStore.currentRoom?.id || 'default'}`);
 	const displayName = $derived(
 		authStore.profile?.display_name || authStore.user?.email?.split('@')[0] || 'Guest'
@@ -393,14 +403,30 @@
 	}
 
 	async function loadDevices() {
-		try {
-			await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-			const devices = await AgoraRTC.getDevices();
-			cameras = devices.filter((d) => d.kind === 'videoinput');
-			microphones = devices.filter((d) => d.kind === 'audioinput');
+		// Try audio and video separately — don't block on either failing
+		let audioAllowed = false;
+		let videoAllowed = false;
 
-			if (cameras.length > 0) selectedCamera = cameras[0].deviceId;
-			if (microphones.length > 0) selectedMicrophone = microphones[0].deviceId;
+		try {
+			await navigator.mediaDevices.getUserMedia({ audio: true });
+			audioAllowed = true;
+		} catch { /* mic not permitted */ }
+
+		try {
+			await navigator.mediaDevices.getUserMedia({ video: true });
+			videoAllowed = true;
+		} catch { /* camera not permitted */ }
+
+		try {
+			const devices = await AgoraRTC.getDevices();
+			if (videoAllowed) {
+				cameras = devices.filter((d) => d.kind === 'videoinput');
+				if (cameras.length > 0) selectedCamera = cameras[0].deviceId;
+			}
+			if (audioAllowed) {
+				microphones = devices.filter((d) => d.kind === 'audioinput');
+				if (microphones.length > 0) selectedMicrophone = microphones[0].deviceId;
+			}
 		} catch (error) {
 			console.error('Error loading devices:', error);
 		}
@@ -510,24 +536,40 @@
 			const uid = await agoraClient.join(PUBLIC_AGORA_APP_ID, channelName, token, numericUid);
 			console.log('✅ Joined with UID:', uid);
 
-			[localAudioTrack, localVideoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
-				{
+			// Create audio and video tracks independently — one failing won't block the other
+			try {
+				localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
 					microphoneId: selectedMicrophone || undefined,
 					encoderConfig: 'music_standard'
-				},
-				{
+				});
+			} catch (err) {
+				console.warn('⚠️ Microphone not available:', err);
+				localAudioTrack = null;
+			}
+
+			try {
+				localVideoTrack = await AgoraRTC.createCameraVideoTrack({
 					cameraId: selectedCamera || undefined,
 					encoderConfig: '720p_2'
-				}
-			);
+				});
+			} catch (err) {
+				console.warn('⚠️ Camera not available:', err);
+				localVideoTrack = null;
+			}
 
-			console.log('📹 Publishing tracks...');
-			await agoraClient.publish([localAudioTrack, localVideoTrack]);
-			console.log('✅ Tracks published');
+			// Publish first (tracks must be enabled when published), then immediately mute/hide
+			const tracksToPublish = [localAudioTrack, localVideoTrack].filter(Boolean) as any[];
+			if (tracksToPublish.length > 0) {
+				console.log('📹 Publishing available tracks...');
+				await agoraClient.publish(tracksToPublish);
+				console.log('✅ Tracks published');
+			} else {
+				console.log('⚠️ Joined call with no tracks — audio and video both unavailable');
+			}
 
-			// Disable by default
-			await localAudioTrack.setEnabled(false);
-			await localVideoTrack.setEnabled(false);
+			// Disable after publishing — Agora requires tracks to be enabled at publish time
+			if (localAudioTrack) await localAudioTrack.setEnabled(false);
+			if (localVideoTrack) await localVideoTrack.setEnabled(false);
 			isMuted = true;
 			isVideoOff = true;
 
@@ -580,6 +622,7 @@
 		if (mediaType === 'audio') {
 			remoteUser.audioTrack = user.audioTrack;
 			user.audioTrack?.play();
+			user.audioTrack?.setVolume(Math.round(playerStore.volume * 100));
 		}
 
 		remoteUsers.set(String(user.uid), remoteUser);
@@ -607,13 +650,42 @@
 	}
 
 	async function toggleMute() {
-		if (!localAudioTrack) return;
+		if (!localAudioTrack) {
+			try {
+				await navigator.mediaDevices.getUserMedia({ audio: true });
+				localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+					microphoneId: selectedMicrophone || undefined,
+					encoderConfig: 'music_standard'
+				});
+				if (agoraClient) await agoraClient.publish([localAudioTrack]);
+				isMuted = false;
+				await localAudioTrack.setEnabled(true);
+			} catch {
+				alert('Microphone permission is required to unmute. Please allow microphone access in your browser settings.');
+			}
+			return;
+		}
 		isMuted = !isMuted;
 		await localAudioTrack.setEnabled(!isMuted);
 	}
 
 	async function toggleVideo() {
-		if (!localVideoTrack) return;
+		if (!localVideoTrack) {
+			try {
+				await navigator.mediaDevices.getUserMedia({ video: true });
+				localVideoTrack = await AgoraRTC.createCameraVideoTrack({
+					cameraId: selectedCamera || undefined,
+					encoderConfig: '720p_2'
+				});
+				if (agoraClient) await agoraClient.publish([localVideoTrack]);
+				isVideoOff = false;
+				await localVideoTrack.setEnabled(true);
+				if (localVideoContainer) localVideoTrack.play(localVideoContainer);
+			} catch {
+				alert('Camera permission is required to enable video. Please allow camera access in your browser settings.');
+			}
+			return;
+		}
 		isVideoOff = !isVideoOff;
 		await localVideoTrack.setEnabled(!isVideoOff);
 	}
@@ -705,6 +777,15 @@
 
 	function toggleSettings() {
 		showSettings = !showSettings;
+	}
+
+	function handleCallVolumeInput(e: Event) {
+		callVolume = parseFloat((e.target as HTMLInputElement).value);
+		remoteUsers.forEach((user) => {
+			if (user.audioTrack) {
+				user.audioTrack.setVolume(Math.round(callVolume * 100));
+			}
+		});
 	}
 
 	function toggleExpandVideo(uid: string) {
@@ -846,50 +927,66 @@
 			</div>
 
 			<!-- Controls -->
-			<div
-				class="flex items-center justify-center gap-2 border-t border-white/10 bg-black/90 px-4 py-3"
-			>
-				<button
-					onclick={toggleMute}
-					class="rounded-full p-3 transition {isMuted
-						? 'bg-red-500 hover:bg-red-600'
-						: 'bg-white/10 hover:bg-white/20'} text-white"
-					title={isMuted ? 'Unmute' : 'Mute'}
-				>
-					{#if isMuted}
-						<MicOff class="h-5 w-5" />
-					{:else}
-						<Mic class="h-5 w-5" />
-					{/if}
-				</button>
+			<div class="border-t border-white/10 bg-black/90 px-4 py-3 space-y-2">
+				<div class="flex items-center justify-center gap-2">
+					<button
+						onclick={toggleMute}
+						class="rounded-full p-3 transition {isMuted
+							? 'bg-red-500 hover:bg-red-600'
+							: 'bg-white/10 hover:bg-white/20'} text-white"
+						title={isMuted ? 'Unmute' : 'Mute'}
+					>
+						{#if isMuted}
+							<MicOff class="h-5 w-5" />
+						{:else}
+							<Mic class="h-5 w-5" />
+						{/if}
+					</button>
 
-				<button
-					onclick={toggleVideo}
-					class="rounded-full p-3 transition {isVideoOff
-						? 'bg-red-500 hover:bg-red-600'
-						: 'bg-white/10 hover:bg-white/20'} text-white"
-					title={isVideoOff ? 'Turn on video' : 'Turn off video'}
-				>
-					{#if isVideoOff}
-						<VideoOff class="h-5 w-5" />
-					{:else}
-						<Video class="h-5 w-5" />
-					{/if}
-				</button>
+					<button
+						onclick={toggleVideo}
+						class="rounded-full p-3 transition {isVideoOff
+							? 'bg-red-500 hover:bg-red-600'
+							: 'bg-white/10 hover:bg-white/20'} text-white"
+						title={isVideoOff ? 'Turn on video' : 'Turn off video'}
+					>
+						{#if isVideoOff}
+							<VideoOff class="h-5 w-5" />
+						{:else}
+							<Video class="h-5 w-5" />
+						{/if}
+					</button>
 
-				<button
-					onclick={toggleScreenShare}
-					class="rounded-full p-3 transition {isSharingScreen
-						? 'bg-primary hover:bg-primary/90'
-						: 'bg-white/10 hover:bg-white/20'} text-white"
-					title={isSharingScreen ? 'Stop sharing' : 'Share screen'}
-				>
-					{#if isSharingScreen}
-						<MonitorOff class="h-5 w-5" />
-					{:else}
-						<Monitor class="h-5 w-5" />
-					{/if}
-				</button>
+					<button
+						onclick={toggleScreenShare}
+						class="rounded-full p-3 transition {isSharingScreen
+							? 'bg-primary hover:bg-primary/90'
+							: 'bg-white/10 hover:bg-white/20'} text-white"
+						title={isSharingScreen ? 'Stop sharing' : 'Share screen'}
+					>
+						{#if isSharingScreen}
+							<MonitorOff class="h-5 w-5" />
+						{:else}
+							<Monitor class="h-5 w-5" />
+						{/if}
+					</button>
+				</div>
+
+				<!-- Call Volume Slider -->
+				<div class="flex items-center gap-2 px-1">
+					<span class="text-xs text-white/50 w-16 shrink-0">Call vol</span>
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.02"
+						value={callVolume}
+						oninput={handleCallVolumeInput}
+						class="h-1 flex-1 cursor-pointer accent-white"
+						aria-label="Call volume"
+					/>
+					<span class="text-xs text-white/50 w-8 text-right">{Math.round(callVolume * 100)}%</span>
+				</div>
 			</div>
 
 			<!-- Settings Panel -->

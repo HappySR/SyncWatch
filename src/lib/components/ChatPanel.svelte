@@ -160,7 +160,7 @@
 {#if !isFullscreen}
 	<div
 		class="bg-surface border-border flex flex-col rounded-xl border shadow-lg backdrop-blur-sm overflow-hidden"
-		style="min-height: 425px; max-height: calc(100vh - 20rem);"
+		style="min-height: 480px; max-height: calc(100vh - 20rem);"
 	>
 		<!-- Chat Header -->
 		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-3">
