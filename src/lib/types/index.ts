@@ -24,6 +24,7 @@ export interface RoomMember {
 	room_id: string;
 	user_id: string;
 	has_controls: boolean;
+	is_banned: boolean;
 	joined_at: string;
 	profiles?: Profile;
 	is_online?: boolean;

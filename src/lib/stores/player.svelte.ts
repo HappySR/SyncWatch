@@ -288,11 +288,11 @@ class PlayerStore {
 		await this.broadcastEvent('change_video', { url, videoType: type });
 	}
 
-	canControl = $derived(
-		!!(authStore.user &&
-		roomStore.currentRoom &&
-		roomStore.members.find((m) => m.user_id === authStore.user?.id)?.has_controls)
-	);
+	get canControl(): boolean {
+		if (!authStore.user || !roomStore.currentRoom) return false;
+		const member = roomStore.members.find((m) => m.user_id === authStore.user?.id);
+		return member?.has_controls ?? false;
+	}
 
 	private syncInProgress = false;
 	private lastSyncAt = 0;

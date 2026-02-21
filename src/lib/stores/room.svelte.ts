@@ -93,6 +93,18 @@ class RoomStore {
 				throw new Error('This room is private');
 			}
 
+			// Check if user is banned
+			const { data: banCheck } = await supabase
+				.from('room_members')
+				.select('is_banned')
+				.eq('room_id', roomId)
+				.eq('user_id', authStore.user.id)
+				.maybeSingle();
+
+			if (banCheck?.is_banned) {
+				throw new Error('You have been banned from this room.');
+			}
+
 			console.log('2️⃣ Room exists, checking membership...');
 
 			const { data: existingMember } = await supabase
@@ -458,13 +470,37 @@ class RoomStore {
 	}
 
 	async toggleMemberControls(memberId: string, hasControls: boolean) {
-		const { error } = await supabase
+    	const { error } = await supabase
 			.from('room_members')
 			.update({ has_controls: hasControls })
 			.eq('id', memberId);
 
 		if (error) {
 			console.error('Failed to update member controls:', error);
+			throw error;
+		}
+	}
+
+	async banMember(memberId: string) {
+		const { error } = await supabase
+			.from('room_members')
+			.update({ is_banned: true, has_controls: false })
+			.eq('id', memberId);
+
+		if (error) {
+			console.error('Failed to ban member:', error);
+			throw error;
+		}
+	}
+
+	async unbanMember(memberId: string) {
+		const { error } = await supabase
+			.from('room_members')
+			.update({ is_banned: false })
+			.eq('id', memberId);
+
+		if (error) {
+			console.error('Failed to unban member:', error);
 			throw error;
 		}
 	}
