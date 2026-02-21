@@ -4,6 +4,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { supabase } from '$lib/supabase';
 	import { roomStore } from '$lib/stores/room.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import VideoPlayer from '$lib/components/VideoPlayer.svelte';
@@ -19,6 +20,8 @@
 	let copied = $state(false);
 	let isVideoFullscreen = $state(false);
 	let mounted = $state(false);
+	let recentChatMessages = $state<any[]>([]);
+	let isFullscreen = $state(false);
 
 	onMount(async () => {
 		mounted = true;
@@ -144,17 +147,24 @@
 			{/if}
 		</div>
 
-		<div class="grid gap-6 lg:grid-cols-[1fr_400px]">
+		<div class="grid gap-6 lg:grid-cols-[1fr_400px] lg:items-start">
 			<div class="space-y-6">
-				<VideoPlayer onFullscreenChange={handleFullscreenChange} />
+				<VideoPlayer
+					onFullscreenChange={(fs) => { isFullscreen = fs; }}
+					recentMessages={recentChatMessages}
+					showChatOverlay={settingsStore.showChatInFullscreen}
+					chatOverlayOpacity={settingsStore.chatOpacityInFullscreen}
+					currentUserId={authStore.user?.id ?? ''}
+				/>
 				<RoomControls />
 			</div>
 
-			<div class="flex flex-col gap-6" style="height: calc(100vh - 140px); min-height: 600px;">
+			<div class="flex flex-col gap-4 lg:sticky lg:top-6" style="max-height: calc(100vh - 6rem);">
 				<UserList {isHost} />
-				<div class="flex-1 overflow-hidden">
-					<ChatPanel isFullscreen={isVideoFullscreen} />
-				</div>
+				<ChatPanel
+					{isFullscreen}
+					onRecentMessages={(msgs) => { recentChatMessages = msgs; }}
+				/>
 			</div>
 		</div>
 	</div>

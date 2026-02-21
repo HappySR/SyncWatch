@@ -7,7 +7,13 @@
 	import { Send, SlidersHorizontal } from 'lucide-svelte';
 	import ChatMessages from './ChatMessages.svelte';
 
-	let { isFullscreen = false } = $props<{ isFullscreen?: boolean }>();
+	let {
+		isFullscreen = false,
+		onRecentMessages = (_msgs: ChatMessage[]) => {}
+	} = $props<{
+		isFullscreen?: boolean;
+		onRecentMessages?: (msgs: ChatMessage[]) => void;
+	}>();
 
 	interface ChatMessage {
 		id: string;
@@ -96,10 +102,12 @@
 
 					// Add to recent messages for fullscreen overlay
 					recentMessages = [...recentMessages, newMsg].slice(-3);
+					onRecentMessages(recentMessages);
 					const msgId = newMsg.id;
 					// Remove after 5 seconds
 					const timer = setTimeout(() => {
 						recentMessages = recentMessages.filter((m) => m.id !== msgId);
+						onRecentMessages(recentMessages);
 						messageTimers.delete(msgId);
 					}, 5000);
 					messageTimers.set(msgId, timer);
@@ -148,37 +156,11 @@
 	}
 </script>
 
-<!-- Fullscreen Chat Overlay — top-right, last 3 messages, 5s TTL -->
-{#if isFullscreen && settingsStore.showChatInFullscreen && recentMessages.length > 0}
-	<div
-		class="fixed top-4 right-4 z-50 w-80 space-y-2 transition-all duration-300 ease-in-out"
-		style="opacity: {settingsStore.chatOpacityInFullscreen}"
-	>
-		{#each recentMessages as message (message.id)}
-			{@const isOwnMessage = message.user_id === authStore.user?.id}
-			<div
-				class="animate-fadeIn overflow-hidden rounded-xl border border-white/20 bg-black/80 p-3 shadow-2xl backdrop-blur-md"
-			>
-				<div class="mb-1 flex items-center gap-2">
-					<span class="text-xs font-medium text-white/90">
-						{isOwnMessage ? 'You' : message.profiles?.display_name || 'Unknown'}
-					</span>
-					<span class="text-xs text-white/50">
-						{formatTime(message.created_at)}
-					</span>
-				</div>
-				<div class="text-sm wrap-break-word text-white/90">
-					{message.message}
-				</div>
-			</div>
-		{/each}
-	</div>
-{/if}
-
 <!-- Regular Chat Panel (Non-Fullscreen) -->
 {#if !isFullscreen}
 	<div
-		class="bg-surface border-border flex h-full flex-col overflow-hidden rounded-xl border shadow-lg backdrop-blur-sm"
+		class="bg-surface border-border flex flex-col rounded-xl border shadow-lg backdrop-blur-sm overflow-hidden"
+		style="min-height: 450px; max-height: calc(100vh - 20rem);"
 	>
 		<!-- Chat Header -->
 		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-3">
@@ -336,9 +318,5 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
-	}
-
-	.animate-fadeIn {
-		animation: fadeIn 0.3s ease-out;
 	}
 </style>

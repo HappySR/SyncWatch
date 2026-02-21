@@ -4,9 +4,32 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { Maximize, Minimize, Loader, Video, SkipForward, SkipBack } from 'lucide-svelte';
 
-	let { onFullscreenChange = () => {} } = $props<{
+	interface OverlayMessage {
+		id: string;
+		user_id: string;
+		message: string;
+		created_at: string;
+		profiles?: { display_name: string; avatar_url: string };
+	}
+
+	let {
+		onFullscreenChange = () => {},
+		recentMessages = [] as OverlayMessage[],
+		showChatOverlay = true,
+		chatOverlayOpacity = 0.7,
+		currentUserId = ''
+	} = $props<{
 		onFullscreenChange?: (isFullscreen: boolean) => void;
+		recentMessages?: OverlayMessage[];
+		showChatOverlay?: boolean;
+		chatOverlayOpacity?: number;
+		currentUserId?: string;
 	}>();
+
+	function formatOverlayTime(timestamp: string) {
+		const date = new Date(timestamp);
+		return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+	}
 
 	let videoElement: HTMLVideoElement | undefined = $state(undefined);
 	let youtubePlayer: any;
@@ -687,6 +710,30 @@
 		onmouseenter={() => (showFullscreenButton = true)}
 		onmouseleave={() => (showFullscreenButton = false)}
 	>
+		<!-- Fullscreen Chat Overlay — rendered inside the fullscreened element so it's visible -->
+		{#if isFullscreen && showChatOverlay && recentMessages.length > 0}
+			<div
+				class="pointer-events-none absolute top-4 right-4 z-9999 w-72 space-y-2"
+				style="opacity: {chatOverlayOpacity}"
+			>
+				{#each recentMessages as message (message.id)}
+					<div class="animate-fadeIn overflow-hidden rounded-xl border border-white/20 bg-black/80 p-3 shadow-2xl backdrop-blur-md">
+						<div class="mb-1 flex items-center gap-2">
+							<span class="text-xs font-medium text-white/90">
+								{message.user_id === currentUserId ? 'You' : message.profiles?.display_name || 'Unknown'}
+							</span>
+							<span class="text-xs text-white/50">
+								{formatOverlayTime(message.created_at)}
+							</span>
+						</div>
+						<div class="wrap-break-word text-sm text-white/90">
+							{message.message}
+						</div>
+					</div>
+				{/each}
+			</div>
+		{/if}
+
 		{#if !videoUrl}
 			<div class="absolute inset-0 flex items-center justify-center text-white/60">
 				<div class="space-y-2 text-center">
@@ -799,6 +846,14 @@
 </div>
 
 <style>
+	@keyframes fadeIn {
+		from { opacity: 0; transform: translateY(8px); }
+		to   { opacity: 1; transform: translateY(0); }
+	}
+	.animate-fadeIn {
+		animation: fadeIn 0.3s ease-out;
+	}
+
 	.fullscreen-container {
 		position: fixed;
 		top: 0;

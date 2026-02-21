@@ -40,12 +40,26 @@
 	async function leaveRoom() {
 		if (!authStore.user || !roomStore.currentRoom || isLeaving) return;
 		isLeaving = true;
+		const roomId = roomStore.currentRoom.id;
 		try {
+			// Delete this member first
 			await supabase
 				.from('room_members')
 				.delete()
-				.eq('room_id', roomStore.currentRoom.id)
+				.eq('room_id', roomId)
 				.eq('user_id', authStore.user.id);
+
+			// Check if any members remain
+			const { count } = await supabase
+				.from('room_members')
+				.select('id', { count: 'exact', head: true })
+				.eq('room_id', roomId);
+
+			// If no members left, delete the entire room (cascades to messages too)
+			if (count === 0) {
+				await supabase.from('rooms').delete().eq('id', roomId);
+			}
+
 			roomStore.leaveRoom();
 			goto('/dashboard');
 		} catch (err) {
