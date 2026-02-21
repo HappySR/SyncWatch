@@ -146,7 +146,7 @@
 
 		if (e.key === ' ' || e.key === 'Spacebar') {
 			e.preventDefault();
-			if (!playerStore.canControl()) return;
+			if (!playerStore.canControl) return;
 			if (playerStore.isPlaying) {
 				playerStore.pause();
 			} else {
@@ -162,7 +162,7 @@
 	}
 
 	async function handleSkip(amount: number) {
-		if (!playerStore.canControl()) return;
+		if (!playerStore.canControl) return;
 
 		// Show indicator
 		showSeekIndicator = amount > 0 ? 'forward' : 'backward';
@@ -201,7 +201,7 @@
 	// ==================== DOUBLE TAP SEEK ====================
 
 	function handleVideoClick(e: MouseEvent) {
-		if (!videoElement || videoType !== 'direct' || !playerStore.canControl()) return;
+		if (!videoElement || videoType !== 'direct' || !playerStore.canControl) return;
 
 		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 		const clickX = e.clientX - rect.left;

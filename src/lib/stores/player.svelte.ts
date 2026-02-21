@@ -219,14 +219,14 @@ class PlayerStore {
 	}
 
 	async play() {
-		if (!this.canControl()) return;
+		if (!this.canControl) return;
 		this.isPlaying = true;
 		this.lastPlayPauseEventAt = Date.now();
 		await this.broadcastEvent('play', { time: this.currentTime });
 	}
 
 	async pause() {
-		if (!this.canControl()) return;
+		if (!this.canControl) return;
 		this.isPlaying = false;
 		this.lastPlayPauseEventAt = Date.now();
 		await this.broadcastEvent('pause', { time: this.currentTime });
@@ -237,7 +237,7 @@ class PlayerStore {
 	private seekBroadcastTimer: any = null;
 
 	async seek(time: number) {
-		if (!this.canControl()) return;
+		if (!this.canControl) return;
 		this.currentTime = time;
 
 		const now = Date.now();
@@ -266,7 +266,7 @@ class PlayerStore {
 	}
 
 	async skipBy(seconds: number, getLiveTime: () => number) {
-		if (!this.canControl()) return;
+		if (!this.canControl) return;
 		const liveTime = getLiveTime();
 		const newTime = Math.max(0, liveTime + seconds);
 		this.currentTime = newTime;
@@ -274,7 +274,7 @@ class PlayerStore {
 	}
 
 	async changeVideo(url: string, type: 'youtube' | 'direct') {
-		if (!this.canControl()) return;
+		if (!this.canControl) return;
 
 		console.log('🎬 Changing video to:', url);
 
@@ -288,12 +288,11 @@ class PlayerStore {
 		await this.broadcastEvent('change_video', { url, videoType: type });
 	}
 
-	canControl(): boolean {
-		if (!authStore.user || !roomStore.currentRoom) return false;
-
-		const member = roomStore.members.find((m) => m.user_id === authStore.user?.id);
-		return member?.has_controls ?? false;
-	}
+	canControl = $derived(
+		!!(authStore.user &&
+		roomStore.currentRoom &&
+		roomStore.members.find((m) => m.user_id === authStore.user?.id)?.has_controls)
+	);
 
 	private syncInProgress = false;
 	private lastSyncAt = 0;
