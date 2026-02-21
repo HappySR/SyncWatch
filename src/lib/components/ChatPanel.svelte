@@ -160,7 +160,7 @@
 {#if !isFullscreen}
 	<div
 		class="bg-surface border-border flex flex-col rounded-xl border shadow-lg backdrop-blur-sm overflow-hidden"
-		style="min-height: 450px; max-height: calc(100vh - 20rem);"
+		style="min-height: 425px; max-height: calc(100vh - 20rem);"
 	>
 		<!-- Chat Header -->
 		<div class="border-border bg-surface-hover/30 shrink-0 border-b p-3">
@@ -174,9 +174,9 @@
 					<SlidersHorizontal class="h-4 w-4" />
 				</button>
 			</div>
-			<p class="text-text-muted mt-1 text-xs">
+			<!-- <p class="text-text-muted mt-1 text-xs">
 				{messages.length} message{messages.length !== 1 ? 's' : ''}
-			</p>
+			</p> -->
 			{#if showOpacitySlider}
 				<div class="mt-3 space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
 					<div class="flex items-center justify-between">
@@ -265,7 +265,7 @@
 		</div>
 
 		<!-- Message Input — shown on BOTTOM for mobile only -->
-		<div class="border-border bg-surface-hover/30 shrink-0 border-t p-4 md:hidden">
+		<div class="border-border bg-surface-hover/30 shrink-0 border-t p-4 mb-6 md:hidden">
 			<form
 				onsubmit={(e) => {
 					e.preventDefault();

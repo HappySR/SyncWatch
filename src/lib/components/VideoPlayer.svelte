@@ -2,7 +2,7 @@
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { roomStore } from '$lib/stores/room.svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { Maximize, Minimize, Loader, Video, SkipForward, SkipBack } from 'lucide-svelte';
+	import { Maximize, Minimize, Loader, Video, SkipForward, SkipBack, Volume2, VolumeX, Volume1 } from 'lucide-svelte';
 
 	interface OverlayMessage {
 		id: string;

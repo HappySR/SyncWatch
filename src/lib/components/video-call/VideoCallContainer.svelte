@@ -88,6 +88,11 @@
 	let posY = $state(-1);
 	let holdTimer: any = null;
 	let isMobileHolding = $state(false);
+	let startCallDragEl: HTMLButtonElement | undefined = $state(undefined);
+	let startCallPos = $state({ x: -1, y: -1 });
+	let isStartCallHolding = $state(false);
+	let didDrag = $state(false);
+	let startCallHoldTimer: any = null;
 
 	function isMobile() {
 		return window.matchMedia('(pointer: coarse)').matches;
@@ -214,6 +219,80 @@
 
 		element.addEventListener('touchmove', onTouchMoveCancel, { passive: true });
 		element.addEventListener('touchend', cancelHold, { once: true });
+	}
+
+	function startCallDrag(e: MouseEvent | TouchEvent) {
+		const element = startCallDragEl;
+		if (!element) return;
+		didDrag = false;
+
+		if (e instanceof MouseEvent) {
+			executeStartCallDrag(element, e.clientX, e.clientY);
+			return;
+		}
+
+		const touch = e.touches[0];
+		const startX = touch.clientX;
+		const startY = touch.clientY;
+		isStartCallHolding = true;
+
+		startCallHoldTimer = setTimeout(() => {
+			isStartCallHolding = false;
+			if (navigator.vibrate) navigator.vibrate(60);
+			executeStartCallDrag(element, startX, startY);
+		}, 1500);
+
+		const cancelHold = () => {
+			if (startCallHoldTimer) { clearTimeout(startCallHoldTimer); startCallHoldTimer = null; }
+			isStartCallHolding = false;
+			element.removeEventListener('touchmove', onTouchMoveCancel);
+			element.removeEventListener('touchend', cancelHold);
+		};
+
+		const onTouchMoveCancel = (ev: TouchEvent) => {
+			const dx = ev.touches[0].clientX - startX;
+			const dy = ev.touches[0].clientY - startY;
+			if (Math.sqrt(dx * dx + dy * dy) > 10) cancelHold();
+		};
+
+		element.addEventListener('touchmove', onTouchMoveCancel, { passive: true });
+		element.addEventListener('touchend', cancelHold, { once: true });
+	}
+
+	function executeStartCallDrag(element: HTMLElement, startClientX: number, startClientY: number) {
+		const rect = element.getBoundingClientRect();
+		const offsetX = startClientX - rect.left;
+		const offsetY = startClientY - rect.top;
+		let dragging = true;
+
+		const onMove = (ev: MouseEvent | TouchEvent) => {
+			if (!dragging) return;
+			ev.preventDefault();
+			didDrag = true;
+			const cx = ev instanceof MouseEvent ? ev.clientX : ev.touches[0].clientX;
+			const cy = ev instanceof MouseEvent ? ev.clientY : ev.touches[0].clientY;
+			const maxX = window.innerWidth - (element.offsetWidth ?? 160);
+			const maxY = window.innerHeight - (element.offsetHeight ?? 44);
+			startCallPos = {
+				x: Math.max(0, Math.min(cx - offsetX, maxX)),
+				y: Math.max(0, Math.min(cy - offsetY, maxY))
+			};
+		};
+
+		const onUp = () => {
+			dragging = false;
+			window.removeEventListener('mousemove', onMove);
+			window.removeEventListener('mouseup', onUp);
+			window.removeEventListener('touchmove', onMove);
+			window.removeEventListener('touchend', onUp);
+			// Reset didDrag after click event fires so next tap works normally
+			setTimeout(() => { didDrag = false; }, 50);
+		};
+
+		window.addEventListener('mousemove', onMove);
+		window.addEventListener('mouseup', onUp);
+		window.addEventListener('touchmove', onMove, { passive: false });
+		window.addEventListener('touchend', onUp);
 	}
 
 	const channelName = $derived(`syncwatch-${roomStore.currentRoom?.id || 'default'}`);
@@ -885,24 +964,31 @@
 		{/if}
 	</div>
 {:else}
-	<!-- Start Call Button - FIXED BOTTOM RIGHT -->
-	<div class="fixed right-4 bottom-4 z-9999">
-		<button
-			onclick={startCall}
-			disabled={isLoading}
-			class="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2.5 font-medium text-white shadow-lg transition hover:bg-green-600 hover:shadow-green-500/50 disabled:cursor-not-allowed disabled:bg-gray-500"
-		>
-			{#if isLoading}
-				<div
-					class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
-				></div>
-				<span>Starting...</span>
-			{:else}
-				<Phone class="h-4 w-4" />
-				<span>Start Meeting</span>
+	<!-- Start Call Button - FIXED BOTTOM RIGHT, hold-to-drag -->
+	<button
+		bind:this={startCallDragEl}
+		onclick={() => { if (!didDrag) startCall(); }}
+		onmousedown={startCallDrag}
+		ontouchstart={startCallDrag}
+		disabled={isLoading}
+		class="fixed z-9999 flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-white shadow-lg transition select-none
+			{isLoading ? 'cursor-not-allowed bg-gray-500' : 'bg-green-500 hover:bg-green-600 hover:shadow-green-500/50'}
+			{isStartCallHolding ? 'scale-110 ring-2 ring-white/50' : ''}"
+		style={startCallPos.x >= 0
+			? `left: ${startCallPos.x}px; top: ${startCallPos.y}px;`
+			: 'right: 16px; bottom: 16px;'}
+	>
+		{#if isLoading}
+			<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+			<span>Starting...</span>
+		{:else}
+			<Phone class="h-4 w-4" />
+			<span>Start Video Call</span>
+			{#if isStartCallHolding}
+				<span class="text-xs text-white/70">Hold…</span>
 			{/if}
-		</button>
-	</div>
+		{/if}
+	</button>
 {/if}
 
 <style>
