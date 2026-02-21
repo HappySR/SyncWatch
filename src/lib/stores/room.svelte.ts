@@ -136,7 +136,7 @@ class RoomStore {
 				.insert({
 					room_id: roomId,
 					user_id: authStore.user.id,
-					has_controls: true,
+					has_controls: false,
 					joined_at: new Date().toISOString()
 				})
 				.select()
@@ -517,6 +517,35 @@ class RoomStore {
 
 		if (error) {
 			console.error('Failed to unban member:', error);
+			throw error;
+		}
+	}
+
+	async grantControlsToAll() {
+		if (!this.currentRoom) return;
+		const { error } = await supabase
+			.from('room_members')
+			.update({ has_controls: true })
+			.eq('room_id', this.currentRoom.id)
+			.eq('is_banned', false)
+			.neq('user_id', this.currentRoom.host_id);
+
+		if (error) {
+			console.error('Failed to grant controls to all:', error);
+			throw error;
+		}
+	}
+
+	async revokeControlsFromAll() {
+		if (!this.currentRoom) return;
+		const { error } = await supabase
+			.from('room_members')
+			.update({ has_controls: false })
+			.eq('room_id', this.currentRoom.id)
+			.neq('user_id', this.currentRoom.host_id);
+
+		if (error) {
+			console.error('Failed to revoke controls from all:', error);
 			throw error;
 		}
 	}
