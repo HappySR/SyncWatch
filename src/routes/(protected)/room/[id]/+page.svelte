@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { onMount, onDestroy } from 'svelte';
 	import { supabase } from '$lib/supabase';
-	import { roomStore } from '$lib/stores/room.svelte';
+	import { roomStore, toastStore } from '$lib/stores/room.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';

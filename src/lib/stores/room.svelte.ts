@@ -2,6 +2,26 @@ import { supabase } from '$lib/supabase';
 import type { Room, RoomMember } from '$lib/types';
 import { authStore } from './auth.svelte';
 
+// Global toast notification store — used by Navbar and any component
+class ToastStore {
+	toasts = $state<{ id: number; message: string; type: 'ban' | 'unban' | 'revoke' | 'grant' | 'info' }[]>([]);
+	private counter = 0;
+
+	show(message: string, type: 'ban' | 'unban' | 'revoke' | 'grant' | 'info' = 'info', duration = 5000) {
+		const id = ++this.counter;
+		this.toasts = [...this.toasts, { id, message, type }];
+		setTimeout(() => {
+			this.toasts = this.toasts.filter((t) => t.id !== id);
+		}, duration);
+	}
+
+	dismiss(id: number) {
+		this.toasts = this.toasts.filter((t) => t.id !== id);
+	}
+}
+
+export const toastStore = new ToastStore();
+
 class RoomStore {
 	currentRoom = $state<Room | null>(null);
 	members = $state<RoomMember[]>([]);
@@ -14,6 +34,20 @@ class RoomStore {
 	private joinTimeout: any = null;
 	private reconnectTimeout: any = null;
 	private banPollInterval: any = null;
+
+	// Internal helper: merge a DB update into local members[], preserving profiles & is_online
+	private applyMemberUpdate(updated: Partial<RoomMember> & { user_id: string }) {
+		const index = this.members.findIndex((m) => m.user_id === updated.user_id);
+		if (index !== -1) {
+			this.members[index] = {
+				...this.members[index],
+				...updated,
+				profiles: this.members[index].profiles,
+				is_online: this.members[index].is_online
+			};
+			this.members = [...this.members];
+		}
+	}
 
 	async createRoom(name: string) {
 		if (!authStore.user) throw new Error('Not authenticated');
@@ -58,7 +92,6 @@ class RoomStore {
 	async joinRoom(roomId: string) {
 		if (!authStore.user) throw new Error('Not authenticated');
 
-		// Clear any existing state first
 		if (this.joinTimeout) {
 			clearTimeout(this.joinTimeout);
 			this.joinTimeout = null;
@@ -94,7 +127,7 @@ class RoomStore {
 				throw new Error('This room is private');
 			}
 
-			// Check if user is banned
+			// Check if user is banned — hard gate
 			const { data: banCheck } = await supabase
 				.from('room_members')
 				.select('is_banned')
@@ -103,7 +136,7 @@ class RoomStore {
 				.maybeSingle();
 
 			if (banCheck?.is_banned) {
-				throw new Error('You have been banned from this room.');
+				throw new Error('🚫 You have been banned from this room.');
 			}
 
 			console.log('2️⃣ Room exists, checking membership...');
@@ -117,7 +150,7 @@ class RoomStore {
 
 			if (existingMember) {
 				if ((existingMember as any).is_banned) {
-					throw new Error('You have been banned from this room.');
+					throw new Error('🚫 You have been banned from this room.');
 				}
 				console.log('3️⃣ Already a member, loading room...');
 				await this.loadRoom(roomId);
@@ -152,7 +185,6 @@ class RoomStore {
 			}
 
 			console.log('5️⃣ Membership created, loading room data...');
-
 			await this.loadRoom(roomId);
 
 			console.log('6️⃣ Setting up subscriptions...');
@@ -192,28 +224,19 @@ class RoomStore {
 		try {
 			const { data, error } = await supabase
 				.from('room_members')
-				.select(
-					`
-					*,
-					profiles (*)
-				`
-				)
+				.select(`*, profiles (*)`)
 				.eq('room_id', roomId)
 				.order('joined_at', { ascending: true });
 
 			if (error) throw error;
 
 			const allMembers = data || [];
-
-			// Create a map of current members and their online status
 			const existingMembersMap = new Map(this.members.map((m) => [m.user_id, m]));
 
-			// Merge new data with existing online status
 			this.members = allMembers.map((member) => {
 				const existingMember = existingMembersMap.get(member.user_id);
 				return {
 					...member,
-					// Preserve online status if member already existed, otherwise false
 					is_online: existingMember?.is_online ?? false
 				};
 			});
@@ -228,7 +251,6 @@ class RoomStore {
 	}
 
 	startPresenceTracking(roomId: string) {
-		// Handle tab close / page unload - untrack presence immediately
 		if (typeof window !== 'undefined') {
 			window.addEventListener('beforeunload', () => {
 				if (this.presenceChannel) {
@@ -237,7 +259,6 @@ class RoomStore {
 			});
 		}
 
-		// CRITICAL: Properly cleanup old channel first
 		if (this.presenceChannel) {
 			console.log('🧹 Cleaning up old presence channel');
 			try {
@@ -269,12 +290,12 @@ class RoomStore {
 				const state = this.presenceChannel.presenceState();
 				this.updateMembersFromPresence(state);
 			})
-			.on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
+			.on('presence', { event: 'join' }, ({ key }: any) => {
 				console.log('✅ User joined presence:', key);
 				const state = this.presenceChannel.presenceState();
 				this.updateMembersFromPresence(state);
 			})
-			.on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
+			.on('presence', { event: 'leave' }, ({ key }: any) => {
 				console.log('👋 User left presence:', key);
 				const state = this.presenceChannel.presenceState();
 				this.updateMembersFromPresence(state);
@@ -287,65 +308,34 @@ class RoomStore {
 						online_at: new Date().toISOString()
 					});
 
-					// Poll every 5s to catch ban if realtime event was missed
-					if (this.banPollInterval) clearInterval(this.banPollInterval);
-					this.banPollInterval = setInterval(async () => {
-						if (!authStore.user || !this.currentRoom) return;
-						const { data } = await supabase
-							.from('room_members')
-							.select('is_banned, has_controls')
-							.eq('room_id', this.currentRoom.id)
-							.eq('user_id', authStore.user.id)
-							.maybeSingle();
+					// Start ban poll — catches ban even if realtime event is missed
+					this.startBanPoll(roomId);
 
-						if (data?.is_banned) {
-							clearInterval(this.banPollInterval);
-							this.banPollInterval = null;
-							this.leaveRoom();
-							import('$app/navigation').then(({ goto }) => goto('/dashboard?banned=1'));
-							return;
-						}
-
-						// Also sync has_controls for the current user in case realtime missed it
-						if (data && data.has_controls !== undefined) {
-							const me = this.members.find((m) => m.user_id === authStore.user?.id);
-							if (me && me.has_controls !== data.has_controls) {
-								this.applyMemberUpdate({ ...me, has_controls: data.has_controls });
-							}
-						}
-					}, 5000);
-
-					// Handle tab visibility: untrack when hidden, retrack when visible
 					if (typeof document !== 'undefined') {
 						const handleVisibility = async () => {
 							if (document.hidden) {
-								// User switched tab/app — mark as offline
 								if (this.presenceChannel) {
 									await this.presenceChannel.untrack();
 									console.log('👁️ Tab hidden — untracked presence');
 								}
 							} else {
-								// User returned — mark as online and sync video
 								if (this.presenceChannel) {
 									await this.presenceChannel.track({
 										user_id: authStore.user?.id,
 										online_at: new Date().toISOString()
 									});
 									console.log('✅ Tab visible — retracked presence');
-									// Sync video state after returning
 									import('./player.svelte').then(({ playerStore }) => {
 										playerStore.syncWithRoom();
 									});
 								}
 							}
 						};
-						// Remove any old listener before adding
 						document.removeEventListener('visibilitychange', handleVisibility);
 						document.addEventListener('visibilitychange', handleVisibility);
 					}
 				} else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
 					console.error('❌ Presence channel error:', status);
-					// Try to reconnect after delay
 					if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
 					this.reconnectTimeout = setTimeout(() => {
 						if (this.currentRoom) {
@@ -364,6 +354,50 @@ class RoomStore {
 				});
 			}
 		}, 30000);
+	}
+
+	private startBanPoll(roomId: string) {
+		if (this.banPollInterval) {
+			clearInterval(this.banPollInterval);
+			this.banPollInterval = null;
+		}
+
+		this.banPollInterval = setInterval(async () => {
+			if (!authStore.user || !this.currentRoom) return;
+
+			const { data } = await supabase
+				.from('room_members')
+				.select('is_banned, has_controls')
+				.eq('room_id', roomId)
+				.eq('user_id', authStore.user.id)
+				.maybeSingle();
+
+			if (!data) return;
+
+			if (data.is_banned) {
+				clearInterval(this.banPollInterval);
+				this.banPollInterval = null;
+				this.handleBanDetected();
+				return;
+			}
+
+			// Sync has_controls if realtime missed it
+			const me = this.members.find((m) => m.user_id === authStore.user?.id);
+			if (me && me.has_controls !== data.has_controls) {
+				const wasRevoked = me.has_controls && !data.has_controls;
+				const wasGranted = !me.has_controls && data.has_controls;
+				this.applyMemberUpdate({ ...me, has_controls: data.has_controls });
+				if (wasRevoked) toastStore.show('Your room controls have been revoked.', 'revoke');
+				if (wasGranted) toastStore.show('You have been granted room controls!', 'grant');
+			}
+		}, 5000);
+	}
+
+	private handleBanDetected() {
+		const roomName = this.currentRoom?.name || 'the room';
+		toastStore.show(`You have been banned from "${roomName}".`, 'ban', 8000);
+		this.leaveRoom();
+		import('$app/navigation').then(({ goto }) => goto('/dashboard'));
 	}
 
 	async updateMembersFromPresence(presenceState: any) {
@@ -390,7 +424,6 @@ class RoomStore {
 	}
 
 	subscribeToRoom(roomId: string) {
-		// CRITICAL: Properly cleanup old channel first
 		if (this.roomChannel) {
 			console.log('🧹 Cleaning up old room channel');
 			try {
@@ -483,19 +516,37 @@ class RoomStore {
 					console.log('🔄 Member updated:', payload.new);
 					const updatedMember = payload.new as RoomMember;
 
-					// If the current user was just banned, kick them out immediately
+					// Banned — handle for the affected user
 					if (
 						updatedMember.user_id === authStore.user?.id &&
 						updatedMember.is_banned === true
 					) {
-						console.log('🚫 Current user was banned — redirecting to dashboard');
-						this.leaveRoom();
-						import('$app/navigation').then(({ goto }) => goto('/dashboard?banned=1'));
+						console.log('🚫 Current user was banned');
+						this.handleBanDetected();
 						return;
 					}
 
-					// Merge update preserving profiles (not returned by postgres_changes) and is_online
-					this.applyMemberUpdate(updatedMember);
+					// Controls changed for current user — show toast
+					if (updatedMember.user_id === authStore.user?.id) {
+						const me = this.members.find((m) => m.user_id === authStore.user?.id);
+						if (me && me.has_controls !== updatedMember.has_controls) {
+							if (!updatedMember.has_controls) {
+								toastStore.show('Your room controls have been revoked.', 'revoke');
+							} else {
+								toastStore.show('You have been granted room controls!', 'grant');
+							}
+						}
+					}
+
+					// Merge preserving profiles and is_online
+					this.applyMemberUpdate({
+						user_id: updatedMember.user_id,
+						has_controls: updatedMember.has_controls,
+						is_banned: updatedMember.is_banned,
+						joined_at: updatedMember.joined_at,
+						id: updatedMember.id,
+						room_id: updatedMember.room_id
+					});
 				}
 			)
 			.subscribe((status) => {
@@ -514,22 +565,8 @@ class RoomStore {
 			});
 	}
 
-	// Internal helper: merge a DB update into local members[], preserving profiles & is_online
-	private applyMemberUpdate(updated: Partial<RoomMember> & { user_id: string }) {
-		const index = this.members.findIndex((m) => m.user_id === updated.user_id);
-		if (index !== -1) {
-			this.members[index] = {
-				...this.members[index],   // preserve profiles, is_online, etc.
-				...updated,
-				profiles: this.members[index].profiles, // never overwrite profiles from DB event
-				is_online: this.members[index].is_online // never overwrite presence state
-			};
-			this.members = [...this.members];
-		}
-	}
-
 	async toggleMemberControls(memberId: string, hasControls: boolean) {
-		// Optimistic update — reflect instantly for the host
+		// Optimistic update immediately
 		const member = this.members.find((m) => m.id === memberId);
 		if (member) this.applyMemberUpdate({ ...member, has_controls: hasControls });
 
@@ -539,7 +576,7 @@ class RoomStore {
 			.eq('id', memberId);
 
 		if (error) {
-			// Rollback optimistic update
+			// Rollback
 			if (member) this.applyMemberUpdate({ ...member, has_controls: !hasControls });
 			console.error('Failed to update member controls:', error);
 			throw error;
@@ -547,7 +584,7 @@ class RoomStore {
 	}
 
 	async banMember(memberId: string) {
-		// Optimistic update
+		// Optimistic update immediately
 		const member = this.members.find((m) => m.id === memberId);
 		if (member) this.applyMemberUpdate({ ...member, is_banned: true, has_controls: false });
 
@@ -583,8 +620,8 @@ class RoomStore {
 	async grantControlsToAll() {
 		if (!this.currentRoom) return;
 
-		// Optimistic update for all non-banned, non-host members
 		const hostId = this.currentRoom.host_id;
+		// Optimistic update
 		this.members = this.members.map((m) =>
 			m.user_id !== hostId && !m.is_banned ? { ...m, has_controls: true } : m
 		);
@@ -597,7 +634,6 @@ class RoomStore {
 			.neq('user_id', hostId);
 
 		if (error) {
-			// Rollback by reloading
 			await this.loadMembers(this.currentRoom.id);
 			console.error('Failed to grant controls to all:', error);
 			throw error;
@@ -607,8 +643,8 @@ class RoomStore {
 	async revokeControlsFromAll() {
 		if (!this.currentRoom) return;
 
-		// Optimistic update
 		const hostId = this.currentRoom.host_id;
+		// Optimistic update
 		this.members = this.members.map((m) =>
 			m.user_id !== hostId ? { ...m, has_controls: false } : m
 		);

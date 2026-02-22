@@ -7,6 +7,7 @@
 	import { supabase, ensureConnection } from '$lib/supabase';
 	import type { Room } from '$lib/types';
 	import { page } from '$app/stores';
+	import { toastStore } from '$lib/stores/room.svelte';
 
 	let rooms = $state<Room[]>([]);
 	let loading = $state(true);
@@ -20,6 +21,12 @@
 
 	onMount(async () => {
 		mounted = true;
+
+		// Show ban toast if redirected from a banned room
+		if ($page.url.searchParams.get('banned') === '1') {
+			toastStore.show('You have been banned from that room.', 'ban', 8000);
+			history.replaceState({}, '', '/dashboard');
+		}
 
 		// Wait for auth
 		let attempts = 0;
@@ -43,10 +50,6 @@
 
 	// Redirect if user logs out
 	$effect(() => {
-		if ($page.url.searchParams.get('banned') === '1') {
-			alert('You have been banned from that room.');
-		}
-
 		if (!authStore.loading && !authStore.user) {
 			goto('/');
 		}

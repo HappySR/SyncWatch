@@ -60,6 +60,15 @@ class PlayerStore {
 			return;
 		}
 
+		// Reject events from users who no longer have controls or are banned
+		if (event.type !== 'change_video') {
+			const sender = roomStore.members.find((m) => m.user_id === event.userId);
+			if (sender && (!sender.has_controls || sender.is_banned)) {
+				console.warn('🚫 Ignoring event from unauthorized user:', event.userId, event.type);
+				return;
+			}
+		}
+
 		// Allow play/pause to always get through — they must be authoritative
 		const isAuthoritative =
 			event.type === 'play' || event.type === 'pause' || event.type === 'change_video';
