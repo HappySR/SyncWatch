@@ -393,11 +393,6 @@ class RoomStore {
 				this.handleBanDetected();
 				return;
 			}
-
-			if (data.is_banned && !this.isBanned) {
-				console.log('🚫 Ban poll caught missed ban event');
-				this.handleBanDetected();
-			}
 		}, 5000);
 	}
 
