@@ -395,8 +395,8 @@ class RoomStore {
 			}
 
 			if (!data.is_banned && this.isBanned) {
-				// Only treat this as a real unban if enough time has passed since the ban was applied.
-				// A freshly-banned user's row may not have replicated yet, causing a false is_banned=false read.
+				// Only treat as real unban if 10s have passed since ban was applied.
+				// A freshly-banned row may not have replicated yet, returning is_banned=false momentarily.
 				if (Date.now() - this.bannedAt > 10_000) {
 					console.log('✅ Ban poll caught missed unban event');
 					this.handleUnbanDetected();
@@ -405,11 +405,14 @@ class RoomStore {
 		}, 5000);
 	}
 
-	private bannedAt = 0; // timestamp when ban was applied — guards against replication-lag false unbans
+	private bannedAt = 0;
 
 	private handleBanDetected() {
 		this.isBanned = true;
 		this.bannedAt = Date.now();
+		import('./player.svelte').then(({ playerStore }) => {
+			playerStore.isPlaying = false;
+		});
 		console.log('🚫 Ban detected — showing ban overlay');
 	}
 
@@ -630,14 +633,12 @@ class RoomStore {
 					console.log('🔄 [Fallback] Member updated via postgres_changes:', payload.new);
 					const updatedMember = payload.new as RoomMember;
 
-					// Silently update ban overlay state for the affected user (no toast)
+					// Silently detect ban via postgres_changes fallback.
+					// Never clear isBanned here — only the unban broadcast or poll (after grace period) may do that.
 					if (updatedMember.user_id === authStore.user?.id) {
 						if (updatedMember.is_banned === true && !this.isBanned) {
 							console.log('🚫 [Fallback] Ban detected via postgres_changes');
 							this.handleBanDetected();
-						} else if (updatedMember.is_banned === false && this.isBanned) {
-							console.log('✅ [Fallback] Unban detected via postgres_changes');
-							this.handleUnbanDetected();
 						}
 					}
 
