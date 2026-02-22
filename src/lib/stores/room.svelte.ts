@@ -135,18 +135,6 @@ class RoomStore {
 				throw new Error('This room is private');
 			}
 
-			// Check if user is banned — hard gate at join time
-			const { data: banCheck } = await supabase
-				.from('room_members')
-				.select('is_banned')
-				.eq('room_id', roomId)
-				.eq('user_id', authStore.user.id)
-				.maybeSingle();
-
-			if (banCheck?.is_banned) {
-				throw new Error('🚫 You have been banned from this room.');
-			}
-
 			console.log('2️⃣ Room exists, checking membership...');
 
 			const { data: existingMember } = await supabase
@@ -156,10 +144,11 @@ class RoomStore {
 				.eq('user_id', authStore.user.id)
 				.maybeSingle();
 
+			if (existingMember?.is_banned) {
+				throw new Error('🚫 You have been banned from this room.');
+			}
+
 			if (existingMember) {
-				if ((existingMember as any).is_banned) {
-					throw new Error('🚫 You have been banned from this room.');
-				}
 				console.log('3️⃣ Already a member, loading room...');
 				await this.loadRoom(roomId);
 				this.subscribeToRoom(roomId);

@@ -8,21 +8,20 @@
 	let isLeaving = $state(false);
 
 	async function leaveRoom() {
-		if (!authStore.user || !roomStore.currentRoom || isLeaving) return;
-		isLeaving = true;
+        if (!authStore.user || !roomStore.currentRoom || isLeaving) return;
+        isLeaving = true;
 
-		const roomId = roomStore.currentRoom.id;
+        const roomId = roomStore.currentRoom.id;
 
-		try {
-			// We don't delete the room_members row — banned users stay in the banned list
-			// so the host can see them and unban later.
-			// Just clean up local state and navigate away.
-			roomStore.leaveRoom();
-			goto('/dashboard');
-		} catch {
-			isLeaving = false;
-		}
-	}
+        try {
+            // Do NOT delete the room_members row — the banned row must stay so
+            // the ban persists and the member cannot rejoin until unbanned.
+            roomStore.leaveRoom();
+            goto('/dashboard');
+        } catch {
+            isLeaving = false;
+        }
+    }
 </script>
 
 <!-- Full-screen overlay blocking the entire room UI -->

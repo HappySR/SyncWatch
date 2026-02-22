@@ -90,19 +90,23 @@
 		isLeaving = true;
 		const roomId = roomStore.currentRoom.id;
 		try {
-			await supabase
-				.from('room_members')
-				.delete()
-				.eq('room_id', roomId)
-				.eq('user_id', authStore.user.id);
+			// Banned members must NOT delete their row — their ban record must persist.
+			const me = roomStore.members.find((m) => m.user_id === authStore.user!.id);
+			if (!me?.is_banned) {
+				await supabase
+					.from('room_members')
+					.delete()
+					.eq('room_id', roomId)
+					.eq('user_id', authStore.user.id);
 
-			const { count } = await supabase
-				.from('room_members')
-				.select('id', { count: 'exact', head: true })
-				.eq('room_id', roomId);
+				const { count } = await supabase
+					.from('room_members')
+					.select('id', { count: 'exact', head: true })
+					.eq('room_id', roomId);
 
-			if (count === 0) {
-				await supabase.from('rooms').delete().eq('id', roomId);
+				if (count === 0) {
+					await supabase.from('rooms').delete().eq('id', roomId);
+				}
 			}
 
 			roomStore.leaveRoom();
