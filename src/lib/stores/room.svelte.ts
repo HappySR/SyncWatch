@@ -395,17 +395,21 @@ class RoomStore {
 			}
 
 			if (!data.is_banned && this.isBanned) {
-				// Unban was missed by broadcast — catch it now
-				console.log('✅ Ban poll caught missed unban event');
-				this.handleUnbanDetected();
+				// Only treat this as a real unban if enough time has passed since the ban was applied.
+				// A freshly-banned user's row may not have replicated yet, causing a false is_banned=false read.
+				if (Date.now() - this.bannedAt > 10_000) {
+					console.log('✅ Ban poll caught missed unban event');
+					this.handleUnbanDetected();
+				}
 			}
 		}, 5000);
 	}
 
+	private bannedAt = 0; // timestamp when ban was applied — guards against replication-lag false unbans
+
 	private handleBanDetected() {
-		// Show the in-room ban overlay instead of redirecting immediately.
-		// The user must click "Leave Room" themselves (or be auto-redirected if they want).
 		this.isBanned = true;
+		this.bannedAt = Date.now();
 		console.log('🚫 Ban detected — showing ban overlay');
 	}
 
