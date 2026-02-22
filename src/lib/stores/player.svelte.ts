@@ -338,6 +338,8 @@ class PlayerStore {
 		this.isSyncing = true;
 
 		try {
+			const fetchStart = Date.now();
+
 			const { data: freshRoom } = await supabase
 				.from('rooms')
 				.select('*')
@@ -348,10 +350,14 @@ class PlayerStore {
 				this.videoUrl = freshRoom.current_video_url;
 				this.videoType = freshRoom.current_video_type as 'youtube' | 'direct' | null;
 
+				// Compensate for both elapsed playback time AND the network round-trip
+				// so the seeded position is accurate at the moment the player receives it
 				let syncTime = freshRoom.video_time || 0;
 				if (freshRoom.is_playing && freshRoom.last_updated) {
-					const elapsed = (Date.now() - new Date(freshRoom.last_updated).getTime()) / 1000;
-					syncTime += elapsed;
+					const dbWrittenAt = new Date(freshRoom.last_updated).getTime();
+					const fetchLatencyMs = Date.now() - fetchStart;
+					const elapsed = (Date.now() - dbWrittenAt - fetchLatencyMs / 2) / 1000;
+					syncTime += Math.max(0, elapsed);
 				}
 
 				this.currentTime = syncTime;
@@ -359,6 +365,9 @@ class PlayerStore {
 				if (!freshRoom.is_playing) {
 					this.isPlaying = false;
 				} else {
+					// Trust DB is_playing=true unless the room has been completely idle
+					// for over 5 minutes — prevents auto-play on long-abandoned rooms
+					// but correctly resumes for joins and unbans during active sessions
 					const lastUpdatedMs = freshRoom.last_updated
 						? Date.now() - new Date(freshRoom.last_updated).getTime()
 						: Infinity;
@@ -382,10 +391,11 @@ class PlayerStore {
 				this.subscribeToRoom(roomStore.currentRoom.id);
 			}
 		} finally {
+			// Shorten the sync lock so playback starts faster after sync
 			setTimeout(() => {
 				this.isSyncing = false;
 				this.syncInProgress = false;
-			}, 1500);
+			}, 500);
 		}
 	}
 
