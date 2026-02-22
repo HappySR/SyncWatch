@@ -394,13 +394,9 @@ class RoomStore {
 				return;
 			}
 
-			if (!data.is_banned && this.isBanned) {
-				// Only treat as real unban if 10s have passed since ban was applied.
-				// A freshly-banned row may not have replicated yet, returning is_banned=false momentarily.
-				if (Date.now() - this.bannedAt > 10_000) {
-					console.log('✅ Ban poll caught missed unban event');
-					this.handleUnbanDetected();
-				}
+			if (data.is_banned && !this.isBanned) {
+				console.log('🚫 Ban poll caught missed ban event');
+				this.handleBanDetected();
 			}
 		}, 5000);
 	}
