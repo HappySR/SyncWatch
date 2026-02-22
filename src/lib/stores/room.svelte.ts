@@ -139,7 +139,7 @@ class RoomStore {
 
 			const { data: existingMember } = await supabase
 				.from('room_members')
-				.select('id, is_banned')
+				.select('id, is_banned, has_controls')
 				.eq('room_id', roomId)
 				.eq('user_id', authStore.user.id)
 				.maybeSingle();
