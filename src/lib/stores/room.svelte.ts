@@ -32,12 +32,17 @@ class RoomStore {
 	isBanned = $state(false);
 
 	private roomChannel: any = null;
-	private memberBroadcastChannel: any = null; // ← NEW: dedicated channel for member updates
+	private memberBroadcastChannel: any = null; // ← dedicated channel for member updates
 	private presenceChannel: any = null;
 	private heartbeatInterval: any = null;
 	private joinTimeout: any = null;
 	private reconnectTimeout: any = null;
 	private banPollInterval: any = null;
+
+	// Timestamp of the last time a member-update broadcast was received and applied.
+	// The ban poll uses this to skip reconciliation for 15s after a broadcast so it
+	// never second-guesses a freshly-applied broadcast with stale/mid-replication DB data.
+	private lastMemberBroadcastAt = 0;
 
 	private applyMemberUpdate(updated: Partial<RoomMember> & { user_id: string }) {
 		const index = this.members.findIndex((m) => m.user_id === updated.user_id);
@@ -371,6 +376,15 @@ class RoomStore {
 		this.banPollInterval = setInterval(async () => {
 			if (!authStore.user || !this.currentRoom) return;
 
+			// If a broadcast was received recently, the DB may still be replicating.
+			// Skip this tick to avoid acting on stale data and firing spurious toasts
+			// or clearing the ban overlay prematurely.
+			const msSinceLastBroadcast = Date.now() - this.lastMemberBroadcastAt;
+			if (msSinceLastBroadcast < 15_000) {
+				console.log('⏭️ Ban poll skipped — recent broadcast is authoritative');
+				return;
+			}
+
 			const { data } = await supabase
 				.from('room_members')
 				.select('is_banned, has_controls')
@@ -381,18 +395,21 @@ class RoomStore {
 			if (!data) return;
 
 			if (data.is_banned) {
-				clearInterval(this.banPollInterval);
-				this.banPollInterval = null;
-				this.handleBanDetected();
+				if (!this.isBanned) {
+					// Ban was missed by broadcast — catch it now
+					clearInterval(this.banPollInterval);
+					this.banPollInterval = null;
+					this.handleBanDetected();
+				}
 				return;
 			}
 
-			// If we were showing the ban overlay but now unbanned, clear it
+			// DB says not banned — only clear overlay if no recent broadcast set it
 			if (this.isBanned) {
-				this.isBanned = false;
+				this.handleUnbanDetected();
 			}
 
-			// Sync has_controls if realtime missed it
+			// Sync has_controls only when broadcast hasn't recently handled it
 			const me = this.members.find((m) => m.user_id === authStore.user?.id);
 			if (me && me.has_controls !== data.has_controls) {
 				const wasRevoked = me.has_controls && !data.has_controls;
@@ -468,6 +485,10 @@ class RoomStore {
 		if (!data?.user_id) return;
 		console.log('📥 Member broadcast received:', data);
 
+		// Mark that we just received a broadcast — the ban poll will defer to this
+		// for 15s to avoid acting on stale/mid-replication DB data
+		this.lastMemberBroadcastAt = Date.now();
+
 		const me = authStore.user?.id;
 
 		// Handle ban
@@ -499,7 +520,7 @@ class RoomStore {
 
 			this.applyMemberUpdate({ user_id: data.user_id, has_controls: data.has_controls });
 
-			// Toast for affected user
+			// Toast only for the affected user, and only if state actually changed
 			if (data.user_id === me && prevControls !== data.has_controls) {
 				if (!data.has_controls) {
 					toastStore.show('Your room controls have been revoked.', 'revoke');
@@ -615,6 +636,14 @@ class RoomStore {
 				async (payload) => {
 					// This is a FALLBACK for when the broadcast channel misses an event.
 					// The broadcast channel (subscribeMemberBroadcast) is the primary path.
+					// If a broadcast was handled recently, skip everything here — the broadcast
+					// already applied the correct state, and the DB may still be replicating.
+					const msSinceLastBroadcast = Date.now() - this.lastMemberBroadcastAt;
+					if (msSinceLastBroadcast < 10_000) {
+						console.log('⏭️ [Fallback] postgres_changes skipped — recent broadcast is authoritative');
+						return;
+					}
+
 					console.log('🔄 [Fallback] Member updated via postgres_changes:', payload.new);
 					const updatedMember = payload.new as RoomMember;
 
