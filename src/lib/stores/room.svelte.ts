@@ -39,9 +39,8 @@ class RoomStore {
 	private reconnectTimeout: any = null;
 	private banPollInterval: any = null;
 
-	// Timestamp of the last time a member-update broadcast was received and applied.
-	// The ban poll uses this to skip reconciliation for 15s after a broadcast so it
-	// never second-guesses a freshly-applied broadcast with stale/mid-replication DB data.
+	// Tracks when the last member-update broadcast was received.
+	// Used by the postgres_changes fallback to avoid overriding fresh broadcast state.
 	private lastMemberBroadcastAt = 0;
 
 	private applyMemberUpdate(updated: Partial<RoomMember> & { user_id: string }) {
@@ -376,47 +375,29 @@ class RoomStore {
 		this.banPollInterval = setInterval(async () => {
 			if (!authStore.user || !this.currentRoom) return;
 
-			// If a broadcast was received recently, the DB may still be replicating.
-			// Skip this tick to avoid acting on stale data and firing spurious toasts
-			// or clearing the ban overlay prematurely.
-			const msSinceLastBroadcast = Date.now() - this.lastMemberBroadcastAt;
-			if (msSinceLastBroadcast < 15_000) {
-				console.log('⏭️ Ban poll skipped — recent broadcast is authoritative');
-				return;
-			}
-
+			// The ban poll has ONE job: detect ban/unban events that the broadcast missed.
+			// It never touches has_controls or fires controls-related toasts — those are
+			// handled exclusively by the broadcast channel + postgres_changes fallback.
 			const { data } = await supabase
 				.from('room_members')
-				.select('is_banned, has_controls')
+				.select('is_banned')
 				.eq('room_id', roomId)
 				.eq('user_id', authStore.user.id)
 				.maybeSingle();
 
 			if (!data) return;
 
-			if (data.is_banned) {
-				if (!this.isBanned) {
-					// Ban was missed by broadcast — catch it now
-					clearInterval(this.banPollInterval);
-					this.banPollInterval = null;
-					this.handleBanDetected();
-				}
+			if (data.is_banned && !this.isBanned) {
+				// Ban was missed by broadcast — catch it now
+				console.log('🚫 Ban poll caught missed ban event');
+				this.handleBanDetected();
 				return;
 			}
 
-			// DB says not banned — only clear overlay if no recent broadcast set it
-			if (this.isBanned) {
+			if (!data.is_banned && this.isBanned) {
+				// Unban was missed by broadcast — catch it now
+				console.log('✅ Ban poll caught missed unban event');
 				this.handleUnbanDetected();
-			}
-
-			// Sync has_controls only when broadcast hasn't recently handled it
-			const me = this.members.find((m) => m.user_id === authStore.user?.id);
-			if (me && me.has_controls !== data.has_controls) {
-				const wasRevoked = me.has_controls && !data.has_controls;
-				const wasGranted = !me.has_controls && data.has_controls;
-				this.applyMemberUpdate({ ...me, has_controls: data.has_controls });
-				if (wasRevoked) toastStore.show('Your room controls have been revoked.', 'revoke');
-				if (wasGranted) toastStore.show('You have been granted room controls!', 'grant');
 			}
 		}, 5000);
 	}
@@ -485,8 +466,7 @@ class RoomStore {
 		if (!data?.user_id) return;
 		console.log('📥 Member broadcast received:', data);
 
-		// Mark that we just received a broadcast — the ban poll will defer to this
-		// for 15s to avoid acting on stale/mid-replication DB data
+		// Stamp so the postgres_changes fallback knows a broadcast was just applied
 		this.lastMemberBroadcastAt = Date.now();
 
 		const me = authStore.user?.id;
@@ -634,10 +614,9 @@ class RoomStore {
 					filter: `room_id=eq.${roomId}`
 				},
 				async (payload) => {
-					// This is a FALLBACK for when the broadcast channel misses an event.
-					// The broadcast channel (subscribeMemberBroadcast) is the primary path.
-					// If a broadcast was handled recently, skip everything here — the broadcast
-					// already applied the correct state, and the DB may still be replicating.
+					// FALLBACK: postgres_changes fires when broadcast is missed (e.g. network drop).
+					// It silently corrects member state without firing any toasts.
+					// Toasts are exclusively the broadcast channel's responsibility.
 					const msSinceLastBroadcast = Date.now() - this.lastMemberBroadcastAt;
 					if (msSinceLastBroadcast < 10_000) {
 						console.log('⏭️ [Fallback] postgres_changes skipped — recent broadcast is authoritative');
@@ -647,38 +626,18 @@ class RoomStore {
 					console.log('🔄 [Fallback] Member updated via postgres_changes:', payload.new);
 					const updatedMember = payload.new as RoomMember;
 
-					// Banned — handle for the affected user
-					if (
-						updatedMember.user_id === authStore.user?.id &&
-						updatedMember.is_banned === true &&
-						!this.isBanned
-					) {
-						console.log('🚫 Current user was banned (fallback detection)');
-						this.handleBanDetected();
-					}
-
-					// Unbanned
-					if (
-						updatedMember.user_id === authStore.user?.id &&
-						updatedMember.is_banned === false &&
-						this.isBanned
-					) {
-						this.handleUnbanDetected();
-					}
-
-					// Controls changed for current user — show toast (fallback)
+					// Silently update ban overlay state for the affected user (no toast)
 					if (updatedMember.user_id === authStore.user?.id) {
-						const me = this.members.find((m) => m.user_id === authStore.user?.id);
-						if (me && me.has_controls !== updatedMember.has_controls) {
-							if (!updatedMember.has_controls) {
-								toastStore.show('Your room controls have been revoked.', 'revoke');
-							} else {
-								toastStore.show('You have been granted room controls!', 'grant');
-							}
+						if (updatedMember.is_banned === true && !this.isBanned) {
+							console.log('🚫 [Fallback] Ban detected via postgres_changes');
+							this.handleBanDetected();
+						} else if (updatedMember.is_banned === false && this.isBanned) {
+							console.log('✅ [Fallback] Unban detected via postgres_changes');
+							this.handleUnbanDetected();
 						}
 					}
 
-					// Update the member in the list for all clients (fallback)
+					// Silently update the member in the list for all clients
 					const idx = this.members.findIndex((m) => m.user_id === updatedMember.user_id);
 					if (idx !== -1) {
 						const updated = [...this.members];
