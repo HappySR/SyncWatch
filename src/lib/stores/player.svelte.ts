@@ -356,8 +356,11 @@ class PlayerStore {
 				if (freshRoom.is_playing && freshRoom.last_updated) {
 					const dbWrittenAt = new Date(freshRoom.last_updated).getTime();
 					const fetchLatencyMs = Date.now() - fetchStart;
-					const elapsed = (Date.now() - dbWrittenAt - fetchLatencyMs / 2) / 1000;
-					syncTime += Math.max(0, elapsed);
+					// Use full round-trip as proxy for one-way latency (more conservative)
+					const elapsed = (Date.now() - dbWrittenAt) / 1000;
+					// Subtract fetch latency so we don't double-count time already elapsed during fetch
+					const adjusted = elapsed - fetchLatencyMs / 1000;
+					syncTime += Math.max(0, adjusted);
 				}
 
 				this.currentTime = syncTime;

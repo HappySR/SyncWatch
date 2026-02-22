@@ -161,7 +161,22 @@ class RoomStore {
 				return;
 			}
 
-			console.log('4️⃣ Not a member, inserting new membership...');
+			console.log('4️⃣ Not a member, checking ban history before inserting...');
+
+			// Check if user was previously banned (row may have been deleted but ban log exists,
+			// OR the member row exists with is_banned=true but maybeSingle missed it — double-check)
+			const { data: banCheck } = await supabase
+				.from('room_members')
+				.select('id, is_banned')
+				.eq('room_id', roomId)
+				.eq('user_id', authStore.user.id)
+				.maybeSingle();
+
+			if (banCheck?.is_banned) {
+				throw new Error('BANNED: You have been banned from this room and cannot rejoin until the host unbans you.');
+			}
+
+			console.log('5️⃣ Not banned, inserting new membership...');
 
 			const { data, error } = await supabase
 				.from('room_members')
@@ -404,11 +419,16 @@ class RoomStore {
 			this.bannedAt = 0;
 			toastStore.show('You have been unbanned from this room.', 'unban');
 			console.log('✅ Unban detected — hiding ban overlay');
-			// Re-sync video state so the unbanned member sees the current video
-			import('./player.svelte').then(({ playerStore }) => {
-				playerStore.resetSyncState();
-				playerStore.syncWithRoom();
-			});
+			// Small delay to let the ban overlay unmount before syncing, then force fresh sync
+			setTimeout(() => {
+				import('./player.svelte').then(({ playerStore }) => {
+					playerStore.resetSyncState();
+					// Force lastSyncAt to 0 so syncWithRoom isn't throttled
+					playerStore['lastSyncAt'] = 0;
+					playerStore['lastPlayPauseEventAt'] = 0;
+					playerStore.syncWithRoom();
+				});
+			}, 300);
 		}
 	}
 
