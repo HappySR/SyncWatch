@@ -363,10 +363,10 @@ class PlayerStore {
 						? Date.now() - new Date(freshRoom.last_updated).getTime()
 						: Infinity;
 
-					if (lastUpdatedMs < 10000) {
+					if (lastUpdatedMs < 5 * 60 * 1000) {
 						this.isPlaying = true;
 					} else {
-						console.log('⏸️ DB is_playing=true but stale — not auto-starting');
+						console.log('⏸️ DB is_playing=true but room idle >5min — not auto-starting');
 						this.isPlaying = false;
 					}
 				}

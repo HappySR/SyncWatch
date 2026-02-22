@@ -23,7 +23,8 @@
 
 		// Show ban toast if redirected from a banned room
 		if ($page.url.searchParams.get('banned') === '1') {
-			toastStore.show('You have been banned from that room.', 'ban', 8000);
+			const msg = $page.url.searchParams.get('msg') || 'You have been banned from that room and cannot rejoin until the host unbans you.';
+			toastStore.show(msg, 'ban', 8000);
 			history.replaceState({}, '', '/dashboard');
 		}
 

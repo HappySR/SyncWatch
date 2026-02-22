@@ -145,7 +145,7 @@ class RoomStore {
 				.maybeSingle();
 
 			if (existingMember?.is_banned) {
-				throw new Error('🚫 You have been banned from this room.');
+				throw new Error('BANNED: You have been banned from this room and cannot rejoin until the host unbans you.');
 			}
 
 			if (existingMember) {

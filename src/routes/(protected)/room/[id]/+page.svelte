@@ -99,9 +99,9 @@
 			const errorMsg = err.message || 'Failed to join room';
 
 			// Use toast for ban errors, alert for others
-			if (errorMsg.includes('banned')) {
-				toastStore.show(errorMsg, 'ban', 8000);
-				goto('/dashboard');
+			if (errorMsg.includes('BANNED:')) {
+				const msg = errorMsg.replace('BANNED: ', '');
+				goto(`/dashboard?banned=1&msg=${encodeURIComponent(msg)}`);
 				return;
 			} else {
 				alert(`${errorMsg}. Returning to dashboard.`);
