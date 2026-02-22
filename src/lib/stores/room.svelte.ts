@@ -161,18 +161,18 @@ class RoomStore {
 				return;
 			}
 
-			console.log('4️⃣ Not a member, checking ban history before inserting...');
+			console.log('4️⃣ Not a member, checking ban history...');
 
-			// Check if user was previously banned (row may have been deleted but ban log exists,
-			// OR the member row exists with is_banned=true but maybeSingle missed it — double-check)
-			const { data: banCheck } = await supabase
-				.from('room_members')
-				.select('id, is_banned')
+			// Check the persistent ban table — catches users whose room_members row
+			// was cleaned up but who are still banned
+			const { data: banRecord } = await supabase
+				.from('room_bans')
+				.select('room_id')
 				.eq('room_id', roomId)
 				.eq('user_id', authStore.user.id)
 				.maybeSingle();
 
-			if (banCheck?.is_banned) {
+			if (banRecord) {
 				throw new Error('BANNED: You have been banned from this room and cannot rejoin until the host unbans you.');
 			}
 
@@ -423,12 +423,11 @@ class RoomStore {
 			setTimeout(() => {
 				import('./player.svelte').then(({ playerStore }) => {
 					playerStore.resetSyncState();
-					// Force lastSyncAt to 0 so syncWithRoom isn't throttled
 					playerStore['lastSyncAt'] = 0;
 					playerStore['lastPlayPauseEventAt'] = 0;
 					playerStore.syncWithRoom();
 				});
-			}, 300);
+			}, 200);
 		}
 	}
 
@@ -727,6 +726,11 @@ class RoomStore {
 			throw error;
 		}
 
+		// Persist to room_bans so the ban survives even if room_members row is cleaned up
+		await supabase
+			.from('room_bans')
+			.upsert({ room_id: this.currentRoom.id, user_id: member.user_id }, { onConflict: 'room_id,user_id' });
+
 		// Broadcast ban to all clients — including the banned user themselves
 		await this.broadcastMemberUpdate(this.currentRoom.id, {
 			user_id: member.user_id,
@@ -752,6 +756,13 @@ class RoomStore {
 			console.error('Failed to unban member:', error);
 			throw error;
 		}
+
+		// Remove from persistent ban table so they can rejoin
+		await supabase
+			.from('room_bans')
+			.delete()
+			.eq('room_id', this.currentRoom.id)
+			.eq('user_id', member.user_id);
 
 		// Broadcast unban so the banned user's overlay disappears instantly
 		await this.broadcastMemberUpdate(this.currentRoom.id, {

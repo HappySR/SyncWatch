@@ -354,13 +354,13 @@ class PlayerStore {
 				// so the seeded position is accurate at the moment the player receives it
 				let syncTime = freshRoom.video_time || 0;
 				if (freshRoom.is_playing && freshRoom.last_updated) {
+					const now = Date.now();
 					const dbWrittenAt = new Date(freshRoom.last_updated).getTime();
-					const fetchLatencyMs = Date.now() - fetchStart;
-					// Use full round-trip as proxy for one-way latency (more conservative)
-					const elapsed = (Date.now() - dbWrittenAt) / 1000;
-					// Subtract fetch latency so we don't double-count time already elapsed during fetch
-					const adjusted = elapsed - fetchLatencyMs / 1000;
-					syncTime += Math.max(0, adjusted);
+					const fetchLatencyMs = now - fetchStart;
+					// Total wall-clock elapsed since DB was written, minus half the round-trip
+					// to approximate the one-way delivery latency
+					const elapsedSec = (now - dbWrittenAt - fetchLatencyMs / 2) / 1000;
+					syncTime += Math.max(0, elapsedSec);
 				}
 
 				this.currentTime = syncTime;
