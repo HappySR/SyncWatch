@@ -13,6 +13,7 @@ class RoomStore {
 	private heartbeatInterval: any = null;
 	private joinTimeout: any = null;
 	private reconnectTimeout: any = null;
+	private banPollInterval: any = null;
 
 	async createRoom(name: string) {
 		if (!authStore.user) throw new Error('Not authenticated');
@@ -286,6 +287,34 @@ class RoomStore {
 						online_at: new Date().toISOString()
 					});
 
+					// Poll every 5s to catch ban if realtime event was missed
+					if (this.banPollInterval) clearInterval(this.banPollInterval);
+					this.banPollInterval = setInterval(async () => {
+						if (!authStore.user || !this.currentRoom) return;
+						const { data } = await supabase
+							.from('room_members')
+							.select('is_banned, has_controls')
+							.eq('room_id', this.currentRoom.id)
+							.eq('user_id', authStore.user.id)
+							.maybeSingle();
+
+						if (data?.is_banned) {
+							clearInterval(this.banPollInterval);
+							this.banPollInterval = null;
+							this.leaveRoom();
+							import('$app/navigation').then(({ goto }) => goto('/dashboard?banned=1'));
+							return;
+						}
+
+						// Also sync has_controls for the current user in case realtime missed it
+						if (data && data.has_controls !== undefined) {
+							const me = this.members.find((m) => m.user_id === authStore.user?.id);
+							if (me && me.has_controls !== data.has_controls) {
+								this.applyMemberUpdate({ ...me, has_controls: data.has_controls });
+							}
+						}
+					}, 5000);
+
 					// Handle tab visibility: untrack when hidden, retrack when visible
 					if (typeof document !== 'undefined') {
 						const handleVisibility = async () => {
@@ -465,22 +494,8 @@ class RoomStore {
 						return;
 					}
 
-					// Merge DB update into local state, preserving profiles (not returned by postgres_changes)
-					// and preserving is_online (presence-tracked, not in DB)
-					const index = this.members.findIndex((m) => m.user_id === updatedMember.user_id);
-					if (index !== -1) {
-						this.members[index] = {
-							...this.members[index],   // keep profiles, is_online, etc.
-							has_controls: updatedMember.has_controls,
-							is_banned: updatedMember.is_banned,
-							// spread any other DB fields you want to keep fresh:
-							joined_at: updatedMember.joined_at,
-						};
-						this.members = [...this.members];
-					} else {
-						// Member not in local list yet (e.g. bulk update caught someone new) — reload
-						await this.loadMembers(roomId);
-					}
+					// Merge update preserving profiles (not returned by postgres_changes) and is_online
+					this.applyMemberUpdate(updatedMember);
 				}
 			)
 			.subscribe((status) => {
@@ -499,37 +514,67 @@ class RoomStore {
 			});
 	}
 
+	// Internal helper: merge a DB update into local members[], preserving profiles & is_online
+	private applyMemberUpdate(updated: Partial<RoomMember> & { user_id: string }) {
+		const index = this.members.findIndex((m) => m.user_id === updated.user_id);
+		if (index !== -1) {
+			this.members[index] = {
+				...this.members[index],   // preserve profiles, is_online, etc.
+				...updated,
+				profiles: this.members[index].profiles, // never overwrite profiles from DB event
+				is_online: this.members[index].is_online // never overwrite presence state
+			};
+			this.members = [...this.members];
+		}
+	}
+
 	async toggleMemberControls(memberId: string, hasControls: boolean) {
-    	const { error } = await supabase
+		// Optimistic update — reflect instantly for the host
+		const member = this.members.find((m) => m.id === memberId);
+		if (member) this.applyMemberUpdate({ ...member, has_controls: hasControls });
+
+		const { error } = await supabase
 			.from('room_members')
 			.update({ has_controls: hasControls })
 			.eq('id', memberId);
 
 		if (error) {
+			// Rollback optimistic update
+			if (member) this.applyMemberUpdate({ ...member, has_controls: !hasControls });
 			console.error('Failed to update member controls:', error);
 			throw error;
 		}
 	}
 
 	async banMember(memberId: string) {
+		// Optimistic update
+		const member = this.members.find((m) => m.id === memberId);
+		if (member) this.applyMemberUpdate({ ...member, is_banned: true, has_controls: false });
+
 		const { error } = await supabase
 			.from('room_members')
 			.update({ is_banned: true, has_controls: false })
 			.eq('id', memberId);
 
 		if (error) {
+			// Rollback
+			if (member) this.applyMemberUpdate({ ...member, is_banned: false, has_controls: member.has_controls });
 			console.error('Failed to ban member:', error);
 			throw error;
 		}
 	}
 
 	async unbanMember(memberId: string) {
+		const member = this.members.find((m) => m.id === memberId);
+		if (member) this.applyMemberUpdate({ ...member, is_banned: false });
+
 		const { error } = await supabase
 			.from('room_members')
 			.update({ is_banned: false })
 			.eq('id', memberId);
 
 		if (error) {
+			if (member) this.applyMemberUpdate({ ...member, is_banned: true });
 			console.error('Failed to unban member:', error);
 			throw error;
 		}
@@ -537,14 +582,23 @@ class RoomStore {
 
 	async grantControlsToAll() {
 		if (!this.currentRoom) return;
+
+		// Optimistic update for all non-banned, non-host members
+		const hostId = this.currentRoom.host_id;
+		this.members = this.members.map((m) =>
+			m.user_id !== hostId && !m.is_banned ? { ...m, has_controls: true } : m
+		);
+
 		const { error } = await supabase
 			.from('room_members')
 			.update({ has_controls: true })
 			.eq('room_id', this.currentRoom.id)
 			.eq('is_banned', false)
-			.neq('user_id', this.currentRoom.host_id);
+			.neq('user_id', hostId);
 
 		if (error) {
+			// Rollback by reloading
+			await this.loadMembers(this.currentRoom.id);
 			console.error('Failed to grant controls to all:', error);
 			throw error;
 		}
@@ -552,13 +606,21 @@ class RoomStore {
 
 	async revokeControlsFromAll() {
 		if (!this.currentRoom) return;
+
+		// Optimistic update
+		const hostId = this.currentRoom.host_id;
+		this.members = this.members.map((m) =>
+			m.user_id !== hostId ? { ...m, has_controls: false } : m
+		);
+
 		const { error } = await supabase
 			.from('room_members')
 			.update({ has_controls: false })
 			.eq('room_id', this.currentRoom.id)
-			.neq('user_id', this.currentRoom.host_id);
+			.neq('user_id', hostId);
 
 		if (error) {
+			await this.loadMembers(this.currentRoom.id);
 			console.error('Failed to revoke controls from all:', error);
 			throw error;
 		}
@@ -589,6 +651,11 @@ class RoomStore {
 		if (this.reconnectTimeout) {
 			clearTimeout(this.reconnectTimeout);
 			this.reconnectTimeout = null;
+		}
+
+		if (this.banPollInterval) {
+			clearInterval(this.banPollInterval);
+			this.banPollInterval = null;
 		}
 	}
 

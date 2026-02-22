@@ -6,6 +6,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { supabase, ensureConnection } from '$lib/supabase';
 	import type { Room } from '$lib/types';
+	import { page } from '$app/stores';
 
 	let rooms = $state<Room[]>([]);
 	let loading = $state(true);
@@ -42,6 +43,10 @@
 
 	// Redirect if user logs out
 	$effect(() => {
+		if ($page.url.searchParams.get('banned') === '1') {
+			alert('You have been banned from that room.');
+		}
+
 		if (!authStore.loading && !authStore.user) {
 			goto('/');
 		}
