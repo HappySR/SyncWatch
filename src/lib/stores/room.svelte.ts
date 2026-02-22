@@ -270,9 +270,13 @@ class RoomStore {
 			})
 			.on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
 				console.log('✅ User joined presence:', key);
+				const state = this.presenceChannel.presenceState();
+				this.updateMembersFromPresence(state);
 			})
 			.on('presence', { event: 'leave' }, ({ key, leftPresences }: any) => {
 				console.log('👋 User left presence:', key);
+				const state = this.presenceChannel.presenceState();
+				this.updateMembersFromPresence(state);
 			})
 			.subscribe(async (status: any) => {
 				console.log('Presence channel status:', status);
@@ -457,15 +461,25 @@ class RoomStore {
 					) {
 						console.log('🚫 Current user was banned — redirecting to dashboard');
 						this.leaveRoom();
-						// Dynamic import to avoid circular deps
 						import('$app/navigation').then(({ goto }) => goto('/dashboard?banned=1'));
 						return;
 					}
 
-					const index = this.members.findIndex((m) => m.id === updatedMember.id);
+					// Merge DB update into local state, preserving profiles (not returned by postgres_changes)
+					// and preserving is_online (presence-tracked, not in DB)
+					const index = this.members.findIndex((m) => m.user_id === updatedMember.user_id);
 					if (index !== -1) {
-						this.members[index] = { ...this.members[index], ...updatedMember };
+						this.members[index] = {
+							...this.members[index],   // keep profiles, is_online, etc.
+							has_controls: updatedMember.has_controls,
+							is_banned: updatedMember.is_banned,
+							// spread any other DB fields you want to keep fresh:
+							joined_at: updatedMember.joined_at,
+						};
 						this.members = [...this.members];
+					} else {
+						// Member not in local list yet (e.g. bulk update caught someone new) — reload
+						await this.loadMembers(roomId);
 					}
 				}
 			)
