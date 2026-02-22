@@ -403,6 +403,8 @@ class RoomStore {
 		this.bannedAt = Date.now();
 		import('./player.svelte').then(({ playerStore }) => {
 			playerStore.isPlaying = false;
+			playerStore.videoUrl = null;
+			playerStore.videoType = null;
 		});
 		console.log('🚫 Ban detected — showing ban overlay');
 	}

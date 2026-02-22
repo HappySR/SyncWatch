@@ -283,7 +283,12 @@ class PlayerStore {
 	}
 
 	async changeVideo(url: string, type: 'youtube' | 'direct') {
-		if (!this.canControl) return;
+		if (!this.canControl) {
+			import('./room.svelte').then(({ toastStore }) => {
+				toastStore.show('You don\'t have control access.', 'info');
+			});
+			return;
+		}
 
 		console.log('🎬 Changing video to:', url);
 

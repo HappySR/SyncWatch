@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { authStore } from '$lib/stores/auth.svelte';
-	import { roomStore } from '$lib/stores/room.svelte';
+	import { roomStore, toastStore } from '$lib/stores/room.svelte';
 	import { goto } from '$app/navigation';
 	import { Plus, Video, Clock, Loader, AlertCircle, RefreshCw } from 'lucide-svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { supabase, ensureConnection } from '$lib/supabase';
 	import type { Room } from '$lib/types';
 	import { page } from '$app/stores';
-	import { toastStore } from '$lib/stores/room.svelte';
 
 	let rooms = $state<Room[]>([]);
 	let loading = $state(true);
@@ -163,10 +162,14 @@
 			await new Promise((resolve) => setTimeout(resolve, 300));
 			joinRoomId = '';
 			goto(`/room/${trimmedId}`);
-		} catch (err: any) {
-			console.error('❌ Join error:', err);
-			alert(err.message || 'Failed to join room. Please try again.');
-		} finally {
+			} catch (err: any) {
+				console.error('❌ Join error:', err);
+				if (err.message?.includes('banned')) {
+					toastStore.show(err.message, 'ban', 8000);
+				} else {
+					alert(err.message || 'Failed to join room. Please try again.');
+				}
+			} finally {
 			isJoining = false;
 		}
 	}

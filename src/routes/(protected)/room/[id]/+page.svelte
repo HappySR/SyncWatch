@@ -21,8 +21,9 @@
 	let copied = $state(false);
 	let isVideoFullscreen = $state(false);
 	let mounted = $state(false);
-	let recentChatMessages = $state<any[]>([]);
 	let isFullscreen = $state(false);
+	let recentChatMessages = $state<any[]>([]);
+	let chatMessagesForOverlay = $derived([...recentChatMessages]);
 
 	onMount(async () => {
 		mounted = true;
@@ -160,7 +161,7 @@
 			<div class="space-y-6">
 				<VideoPlayer
 					onFullscreenChange={(fs) => { isFullscreen = fs; }}
-					recentMessages={recentChatMessages}
+					recentMessages={chatMessagesForOverlay}
 					showChatOverlay={settingsStore.showChatInFullscreen}
 					chatOverlayOpacity={settingsStore.chatOpacityInFullscreen}
 					currentUserId={authStore.user?.id ?? ''}
