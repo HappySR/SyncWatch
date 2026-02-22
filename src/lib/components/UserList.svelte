@@ -98,15 +98,6 @@
 					.delete()
 					.eq('room_id', roomId)
 					.eq('user_id', authStore.user.id);
-
-				const { count } = await supabase
-					.from('room_members')
-					.select('id', { count: 'exact', head: true })
-					.eq('room_id', roomId);
-
-				if (count === 0) {
-					await supabase.from('rooms').delete().eq('id', roomId);
-				}
 			}
 
 			roomStore.leaveRoom();

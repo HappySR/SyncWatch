@@ -163,6 +163,11 @@ class RoomStore {
 				}
 
 				console.log('3️⃣ Already a member, loading room...');
+				// Ensure host always has controls
+				const room = await supabase.from('rooms').select('host_id').eq('id', roomId).single();
+				if (room.data?.host_id === authStore.user!.id && !existingMember.has_controls) {
+					await supabase.from('room_members').update({ has_controls: true }).eq('id', existingMember.id);
+				}
 				await this.loadRoom(roomId);
 				this.subscribeToRoom(roomId);
 				this.subscribeMemberBroadcast(roomId);
@@ -697,6 +702,8 @@ class RoomStore {
 	async toggleMemberControls(memberId: string, hasControls: boolean) {
 		const member = this.members.find((m) => m.id === memberId);
 		if (!member || !this.currentRoom) return;
+		// Host always keeps controls — never allow revoke
+		if (member.user_id === this.currentRoom.host_id) return;
 
 		// Optimistic update immediately
 		this.applyMemberUpdate({ ...member, has_controls: hasControls });
@@ -830,7 +837,8 @@ class RoomStore {
 			.from('room_members')
 			.update({ has_controls: false })
 			.eq('room_id', this.currentRoom.id)
-			.neq('user_id', hostId);
+			.neq('user_id', hostId)
+			.eq('is_banned', false);
 
 		if (error) {
 			await this.loadMembers(this.currentRoom.id);
