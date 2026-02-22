@@ -13,6 +13,7 @@
 	import ChatPanel from '$lib/components/ChatPanel.svelte';
 	import VideoCallContainer from '$lib/components/video-call/VideoCallContainer.svelte';
 	import { Copy, Check } from 'lucide-svelte';
+	import BanOverlay from '$lib/components/BanOverlay.svelte';
 
 	let roomId = $derived($page.params.id ?? '');
 	let loading = $state(true);
@@ -120,6 +121,8 @@
 	const currentMember = $derived(roomStore.members.find((m) => m.user_id === authStore.user?.id));
 	const isHost = $derived(roomStore.currentRoom?.host_id === authStore.user?.id);
 </script>
+
+<BanOverlay />
 
 {#if loading}
 	<div class="flex min-h-screen items-center justify-center">

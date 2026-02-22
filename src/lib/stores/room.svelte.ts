@@ -28,7 +28,11 @@ class RoomStore {
 	loading = $state(false);
 	error = $state<string | null>(null);
 
+	// Ban overlay state — shown immediately when current user is banned, cleared on unban
+	isBanned = $state(false);
+
 	private roomChannel: any = null;
+	private memberBroadcastChannel: any = null; // ← NEW: dedicated channel for member updates
 	private presenceChannel: any = null;
 	private heartbeatInterval: any = null;
 	private joinTimeout: any = null;
@@ -127,7 +131,7 @@ class RoomStore {
 				throw new Error('This room is private');
 			}
 
-			// Check if user is banned — hard gate
+			// Check if user is banned — hard gate at join time
 			const { data: banCheck } = await supabase
 				.from('room_members')
 				.select('is_banned')
@@ -155,6 +159,7 @@ class RoomStore {
 				console.log('3️⃣ Already a member, loading room...');
 				await this.loadRoom(roomId);
 				this.subscribeToRoom(roomId);
+				this.subscribeMemberBroadcast(roomId); // ← NEW
 				this.startPresenceTracking(roomId);
 
 				clearTimeout(this.joinTimeout);
@@ -189,6 +194,7 @@ class RoomStore {
 
 			console.log('6️⃣ Setting up subscriptions...');
 			this.subscribeToRoom(roomId);
+			this.subscribeMemberBroadcast(roomId); // ← NEW
 			this.startPresenceTracking(roomId);
 
 			clearTimeout(this.joinTimeout);
@@ -381,6 +387,11 @@ class RoomStore {
 				return;
 			}
 
+			// If we were showing the ban overlay but now unbanned, clear it
+			if (this.isBanned) {
+				this.isBanned = false;
+			}
+
 			// Sync has_controls if realtime missed it
 			const me = this.members.find((m) => m.user_id === authStore.user?.id);
 			if (me && me.has_controls !== data.has_controls) {
@@ -394,14 +405,18 @@ class RoomStore {
 	}
 
 	private handleBanDetected() {
-		const roomName = this.currentRoom?.name || 'the room';
-		// Fire toast first, then leave after a short delay so the toast registers
-		// before the component tree unmounts
-		toastStore.show(`You have been banned from "${roomName}".`, 'ban', 8000);
-		setTimeout(() => {
-			this.leaveRoom();
-			import('$app/navigation').then(({ goto }) => goto('/dashboard'));
-		}, 100);
+		// Show the in-room ban overlay instead of redirecting immediately.
+		// The user must click "Leave Room" themselves (or be auto-redirected if they want).
+		this.isBanned = true;
+		console.log('🚫 Ban detected — showing ban overlay');
+	}
+
+	private handleUnbanDetected() {
+		if (this.isBanned) {
+			this.isBanned = false;
+			toastStore.show('You have been unbanned from this room.', 'unban');
+			console.log('✅ Unban detected — hiding ban overlay');
+		}
 	}
 
 	async updateMembersFromPresence(presenceState: any) {
@@ -424,6 +439,87 @@ class RoomStore {
 		console.log('📊 Online status updated:', {
 			total: this.members.length,
 			online: this.members.filter((m) => m.is_online).length
+		});
+	}
+
+	/**
+	 * NEW: Subscribe to a dedicated broadcast channel for member state changes.
+	 * This is the reliable, instant path for controls/ban changes visible to ALL clients.
+	 * The host broadcasts member updates after every toggleControls / ban / unban action.
+	 * Postgres realtime is kept as a fallback but is not the primary delivery mechanism.
+	 */
+	subscribeMemberBroadcast(roomId: string) {
+		if (this.memberBroadcastChannel) {
+			try { supabase.removeChannel(this.memberBroadcastChannel); } catch {}
+			this.memberBroadcastChannel = null;
+		}
+
+		this.memberBroadcastChannel = supabase
+			.channel(`members:${roomId}`, { config: { broadcast: { ack: false } } })
+			.on('broadcast', { event: 'member-update' }, (payload) => {
+				this.handleMemberBroadcast(payload.payload);
+			})
+			.subscribe((status) => {
+				console.log('👥 Member broadcast channel:', status);
+			});
+	}
+
+	private handleMemberBroadcast(data: any) {
+		if (!data?.user_id) return;
+		console.log('📥 Member broadcast received:', data);
+
+		const me = authStore.user?.id;
+
+		// Handle ban
+		if (data.is_banned === true) {
+			// Update member list for everyone (host sees the banned tab update)
+			this.applyMemberUpdate({ user_id: data.user_id, is_banned: true, has_controls: false });
+
+			// If this is us: show ban overlay
+			if (data.user_id === me) {
+				this.handleBanDetected();
+			}
+			return;
+		}
+
+		// Handle unban
+		if (data.is_banned === false) {
+			this.applyMemberUpdate({ user_id: data.user_id, is_banned: false });
+
+			if (data.user_id === me) {
+				this.handleUnbanDetected();
+			}
+			return;
+		}
+
+		// Handle controls toggle
+		if (data.has_controls !== undefined) {
+			const member = this.members.find((m) => m.user_id === data.user_id);
+			const prevControls = member?.has_controls;
+
+			this.applyMemberUpdate({ user_id: data.user_id, has_controls: data.has_controls });
+
+			// Toast for affected user
+			if (data.user_id === me && prevControls !== data.has_controls) {
+				if (!data.has_controls) {
+					toastStore.show('Your room controls have been revoked.', 'revoke');
+				} else {
+					toastStore.show('You have been granted room controls!', 'grant');
+				}
+			}
+		}
+	}
+
+	/**
+	 * Broadcast a member state update to all clients in the room.
+	 * Called by the host after every toggleControls / ban / unban.
+	 */
+	private async broadcastMemberUpdate(roomId: string, payload: Record<string, any>) {
+		if (!this.memberBroadcastChannel) return;
+		await this.memberBroadcastChannel.send({
+			type: 'broadcast',
+			event: 'member-update',
+			payload
 		});
 	}
 
@@ -517,20 +613,31 @@ class RoomStore {
 					filter: `room_id=eq.${roomId}`
 				},
 				async (payload) => {
-					console.log('🔄 Member updated:', payload.new);
+					// This is a FALLBACK for when the broadcast channel misses an event.
+					// The broadcast channel (subscribeMemberBroadcast) is the primary path.
+					console.log('🔄 [Fallback] Member updated via postgres_changes:', payload.new);
 					const updatedMember = payload.new as RoomMember;
 
 					// Banned — handle for the affected user
 					if (
 						updatedMember.user_id === authStore.user?.id &&
-						updatedMember.is_banned === true
+						updatedMember.is_banned === true &&
+						!this.isBanned
 					) {
-						console.log('🚫 Current user was banned');
+						console.log('🚫 Current user was banned (fallback detection)');
 						this.handleBanDetected();
-						return;
 					}
 
-					// Controls changed for current user — show toast
+					// Unbanned
+					if (
+						updatedMember.user_id === authStore.user?.id &&
+						updatedMember.is_banned === false &&
+						this.isBanned
+					) {
+						this.handleUnbanDetected();
+					}
+
+					// Controls changed for current user — show toast (fallback)
 					if (updatedMember.user_id === authStore.user?.id) {
 						const me = this.members.find((m) => m.user_id === authStore.user?.id);
 						if (me && me.has_controls !== updatedMember.has_controls) {
@@ -542,20 +649,19 @@ class RoomStore {
 						}
 					}
 
-					// Update the member in the list, preserving profiles and is_online
-					// Use full array replacement to guarantee Svelte 5 reactivity triggers
+					// Update the member in the list for all clients (fallback)
 					const idx = this.members.findIndex((m) => m.user_id === updatedMember.user_id);
 					if (idx !== -1) {
 						const updated = [...this.members];
 						updated[idx] = {
-							...updated[idx],                          // keep profiles, is_online, etc.
+							...updated[idx],
 							has_controls: updatedMember.has_controls,
 							is_banned: updatedMember.is_banned,
 							id: updatedMember.id,
 							room_id: updatedMember.room_id,
 							joined_at: updatedMember.joined_at,
 						};
-						this.members = updated;                       // triggers reactive update for ALL watchers
+						this.members = updated;
 					}
 				}
 			)
@@ -576,9 +682,11 @@ class RoomStore {
 	}
 
 	async toggleMemberControls(memberId: string, hasControls: boolean) {
-		// Optimistic update immediately
 		const member = this.members.find((m) => m.id === memberId);
-		if (member) this.applyMemberUpdate({ ...member, has_controls: hasControls });
+		if (!member || !this.currentRoom) return;
+
+		// Optimistic update immediately
+		this.applyMemberUpdate({ ...member, has_controls: hasControls });
 
 		const { error } = await supabase
 			.from('room_members')
@@ -587,16 +695,24 @@ class RoomStore {
 
 		if (error) {
 			// Rollback
-			if (member) this.applyMemberUpdate({ ...member, has_controls: !hasControls });
+			this.applyMemberUpdate({ ...member, has_controls: !hasControls });
 			console.error('Failed to update member controls:', error);
 			throw error;
 		}
+
+		// Broadcast instantly to all clients so every screen updates without waiting for postgres_changes
+		await this.broadcastMemberUpdate(this.currentRoom.id, {
+			user_id: member.user_id,
+			has_controls: hasControls
+		});
 	}
 
 	async banMember(memberId: string) {
-		// Optimistic update immediately
 		const member = this.members.find((m) => m.id === memberId);
-		if (member) this.applyMemberUpdate({ ...member, is_banned: true, has_controls: false });
+		if (!member || !this.currentRoom) return;
+
+		// Optimistic update immediately
+		this.applyMemberUpdate({ ...member, is_banned: true, has_controls: false });
 
 		const { error } = await supabase
 			.from('room_members')
@@ -605,15 +721,25 @@ class RoomStore {
 
 		if (error) {
 			// Rollback
-			if (member) this.applyMemberUpdate({ ...member, is_banned: false, has_controls: member.has_controls });
+			this.applyMemberUpdate({ ...member, is_banned: false, has_controls: member.has_controls });
 			console.error('Failed to ban member:', error);
 			throw error;
 		}
+
+		// Broadcast ban to all clients — including the banned user themselves
+		await this.broadcastMemberUpdate(this.currentRoom.id, {
+			user_id: member.user_id,
+			is_banned: true,
+			has_controls: false
+		});
 	}
 
 	async unbanMember(memberId: string) {
 		const member = this.members.find((m) => m.id === memberId);
-		if (member) this.applyMemberUpdate({ ...member, is_banned: false });
+		if (!member || !this.currentRoom) return;
+
+		// Optimistic update
+		this.applyMemberUpdate({ ...member, is_banned: false });
 
 		const { error } = await supabase
 			.from('room_members')
@@ -621,10 +747,16 @@ class RoomStore {
 			.eq('id', memberId);
 
 		if (error) {
-			if (member) this.applyMemberUpdate({ ...member, is_banned: true });
+			this.applyMemberUpdate({ ...member, is_banned: true });
 			console.error('Failed to unban member:', error);
 			throw error;
 		}
+
+		// Broadcast unban so the banned user's overlay disappears instantly
+		await this.broadcastMemberUpdate(this.currentRoom.id, {
+			user_id: member.user_id,
+			is_banned: false
+		});
 	}
 
 	async grantControlsToAll() {
@@ -648,6 +780,16 @@ class RoomStore {
 			console.error('Failed to grant controls to all:', error);
 			throw error;
 		}
+
+		// Broadcast each affected member's new state
+		for (const m of this.members) {
+			if (m.user_id !== hostId && !m.is_banned) {
+				await this.broadcastMemberUpdate(this.currentRoom.id, {
+					user_id: m.user_id,
+					has_controls: true
+				});
+			}
+		}
 	}
 
 	async revokeControlsFromAll() {
@@ -670,12 +812,27 @@ class RoomStore {
 			console.error('Failed to revoke controls from all:', error);
 			throw error;
 		}
+
+		// Broadcast each affected member's new state
+		for (const m of this.members) {
+			if (m.user_id !== hostId) {
+				await this.broadcastMemberUpdate(this.currentRoom.id, {
+					user_id: m.user_id,
+					has_controls: false
+				});
+			}
+		}
 	}
 
 	unsubscribe() {
 		if (this.roomChannel) {
 			supabase.removeChannel(this.roomChannel);
 			this.roomChannel = null;
+		}
+
+		if (this.memberBroadcastChannel) {
+			supabase.removeChannel(this.memberBroadcastChannel);
+			this.memberBroadcastChannel = null;
 		}
 
 		if (this.presenceChannel) {
@@ -710,6 +867,7 @@ class RoomStore {
 		this.currentRoom = null;
 		this.members = [];
 		this.error = null;
+		this.isBanned = false;
 	}
 
 	cleanup() {

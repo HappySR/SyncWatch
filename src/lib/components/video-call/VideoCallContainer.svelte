@@ -1068,7 +1068,7 @@
 		onmousedown={startCallDrag}
 		ontouchstart={startCallDrag}
 		disabled={isLoading}
-		class="fixed z-9999 flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-white shadow-lg transition select-none
+		class="fixed z-9998 flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-white shadow-lg transition select-none
 			{isLoading ? 'cursor-not-allowed bg-gray-500' : 'bg-green-500 hover:bg-green-600 hover:shadow-green-500/50'}
 			{isStartCallHolding ? 'scale-110 ring-2 ring-white/50' : ''}"
 		style={startCallPos.x >= 0

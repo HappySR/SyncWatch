@@ -73,7 +73,7 @@
 </script>
 
 <!-- Toast Notifications — fixed top-right, above everything -->
-<div class="fixed top-4 right-4 z-9999 flex flex-col gap-2 pointer-events-none">
+<div class="fixed top-4 right-4 z-9998 flex flex-col gap-2 pointer-events-none">
 	{#each toastStore.toasts as toast (toast.id)}
 		{@const Icon = toastIcons[toast.type] ?? Info}
 		{@const colorClass = toastColors[toast.type] ?? toastColors.info}

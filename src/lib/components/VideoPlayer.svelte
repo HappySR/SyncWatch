@@ -746,7 +746,7 @@
 		<!-- Fullscreen Chat Overlay — rendered inside the fullscreened element so it's visible -->
 		{#if isFullscreen && showChatOverlay && recentMessages.length > 0}
 			<div
-				class="pointer-events-none absolute top-4 right-4 z-9999 w-72 space-y-2"
+				class="pointer-events-none absolute top-4 right-4 z-9997 w-72 space-y-2"
 				style="opacity: {chatOverlayOpacity}"
 			>
 				{#each recentMessages as message (message.id)}
@@ -934,7 +934,7 @@
 		bottom: 0;
 		width: 100vw;
 		height: 100vh;
-		z-index: 9998;
+		z-index: 9996;
 		border-radius: 0;
 	}
 
