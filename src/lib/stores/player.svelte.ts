@@ -98,6 +98,7 @@ class PlayerStore {
 					const transitMs = event.sentAt ? Date.now() - event.sentAt : 0;
 					const compensated = event.time + transitMs / 1000;
 					this.currentTime = compensated;
+					this.updateLastBroadcastState(event.time, true, event.sentAt ?? Date.now());
 				}
 				break;
 			}
@@ -107,6 +108,7 @@ class PlayerStore {
 				this.lastPlayPauseEventAt = Date.now();
 				if (event.time !== undefined) {
 					this.currentTime = event.time;
+					this.updateLastBroadcastState(event.time, false, event.sentAt ?? Date.now());
 				}
 				break;
 
@@ -233,6 +235,7 @@ class PlayerStore {
 		if (!this.canControl) return;
 		this.isPlaying = true;
 		this.lastPlayPauseEventAt = Date.now();
+		this.updateLastBroadcastState(this.currentTime, true, Date.now());
 		await this.broadcastEvent('play', { time: this.currentTime });
 	}
 
@@ -240,6 +243,7 @@ class PlayerStore {
 		if (!this.canControl) return;
 		this.isPlaying = false;
 		this.lastPlayPauseEventAt = Date.now();
+		this.updateLastBroadcastState(this.currentTime, false, Date.now());
 		await this.broadcastEvent('pause', { time: this.currentTime });
 	}
 
@@ -317,6 +321,18 @@ class PlayerStore {
 	private lastSyncAt = 0;
 	private lastPlayPauseEventAt = 0;
 
+	// Stores the most recently received broadcast state for instant sync
+	private lastBroadcastState: {
+		time: number;
+		isPlaying: boolean;
+		receivedAt: number;
+		sentAt: number;
+	} | null = null;
+
+	updateLastBroadcastState(time: number, isPlaying: boolean, sentAt: number) {
+		this.lastBroadcastState = { time, isPlaying, receivedAt: Date.now(), sentAt };
+	}
+
 	async syncWithRoom() {
 		if (!roomStore.currentRoom) return;
 
@@ -338,6 +354,31 @@ class PlayerStore {
 		this.isSyncing = true;
 
 		try {
+			// Fast path: if we have a recent broadcast (< 8s old), use it directly
+			// This gives near-zero latency sync for join/unban during active playback
+			const broadcast = this.lastBroadcastState;
+			if (broadcast && (now - broadcast.receivedAt) < 8000 && this.videoUrl) {
+				const ageMs = now - broadcast.sentAt;
+				const syncTime = broadcast.isPlaying
+					? broadcast.time + ageMs / 1000
+					: broadcast.time;
+
+				this.currentTime = Math.max(0, syncTime);
+				this.isPlaying = broadcast.isPlaying;
+
+				console.log('⚡ Fast sync from broadcast:', {
+					time: this.currentTime,
+					isPlaying: this.isPlaying,
+					broadcastAgeMs: ageMs
+				});
+
+				if (roomStore.currentRoom.id) {
+					this.subscribeToRoom(roomStore.currentRoom.id);
+				}
+				return;
+			}
+
+			// Slow path: fetch from DB (first join, or no recent broadcast)
 			const fetchStart = Date.now();
 
 			const { data: freshRoom } = await supabase
@@ -350,16 +391,13 @@ class PlayerStore {
 				this.videoUrl = freshRoom.current_video_url;
 				this.videoType = freshRoom.current_video_type as 'youtube' | 'direct' | null;
 
-				// Compensate for both elapsed playback time AND the network round-trip
-				// so the seeded position is accurate at the moment the player receives it
 				let syncTime = freshRoom.video_time || 0;
 				if (freshRoom.is_playing && freshRoom.last_updated) {
-					const now = Date.now();
+					const now2 = Date.now();
 					const dbWrittenAt = new Date(freshRoom.last_updated).getTime();
-					const fetchLatencyMs = now - fetchStart;
-					// Total wall-clock elapsed since DB was written, minus half the round-trip
-					// to approximate the one-way delivery latency
-					const elapsedSec = (now - dbWrittenAt - fetchLatencyMs / 2) / 1000;
+					const fetchLatencyMs = now2 - fetchStart;
+					// Elapsed since DB write, minus half round-trip for one-way latency estimate
+					const elapsedSec = (now2 - dbWrittenAt - fetchLatencyMs / 2) / 1000;
 					syncTime += Math.max(0, elapsedSec);
 				}
 
@@ -368,9 +406,6 @@ class PlayerStore {
 				if (!freshRoom.is_playing) {
 					this.isPlaying = false;
 				} else {
-					// Trust DB is_playing=true unless the room has been completely idle
-					// for over 5 minutes — prevents auto-play on long-abandoned rooms
-					// but correctly resumes for joins and unbans during active sessions
 					const lastUpdatedMs = freshRoom.last_updated
 						? Date.now() - new Date(freshRoom.last_updated).getTime()
 						: Infinity;
@@ -383,7 +418,7 @@ class PlayerStore {
 					}
 				}
 
-				console.log('✅ Synced:', {
+				console.log('✅ Synced from DB:', {
 					url: this.videoUrl,
 					time: syncTime,
 					isPlaying: this.isPlaying
@@ -394,11 +429,10 @@ class PlayerStore {
 				this.subscribeToRoom(roomStore.currentRoom.id);
 			}
 		} finally {
-			// Shorten the sync lock so playback starts faster after sync
 			setTimeout(() => {
 				this.isSyncing = false;
 				this.syncInProgress = false;
-			}, 500);
+			}, 300);
 		}
 	}
 

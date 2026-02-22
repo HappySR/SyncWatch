@@ -148,11 +148,24 @@ class RoomStore {
 				throw new Error('BANNED: You have been banned from this room and cannot rejoin until the host unbans you.');
 			}
 
+			// Also check persistent ban table — catches users who cleared their session
+			// or whose room_members row was recreated
 			if (existingMember) {
+				const { data: banRecord } = await supabase
+					.from('room_bans')
+					.select('room_id')
+					.eq('room_id', roomId)
+					.eq('user_id', authStore.user.id)
+					.maybeSingle();
+
+				if (banRecord) {
+					throw new Error('BANNED: You have been banned from this room and cannot rejoin until the host unbans you.');
+				}
+
 				console.log('3️⃣ Already a member, loading room...');
 				await this.loadRoom(roomId);
 				this.subscribeToRoom(roomId);
-				this.subscribeMemberBroadcast(roomId); // ← NEW
+				this.subscribeMemberBroadcast(roomId);
 				this.startPresenceTracking(roomId);
 
 				clearTimeout(this.joinTimeout);
