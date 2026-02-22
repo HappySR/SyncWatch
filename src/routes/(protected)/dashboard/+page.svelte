@@ -165,7 +165,7 @@
 			} catch (err: any) {
 				console.error('❌ Join error:', err);
 				if (err.message?.includes('banned')) {
-					toastStore.show(err.message, 'ban', 8000);
+					toastStore.show('You have been banned from this room and cannot rejoin until the host unbans you.', 'ban', 8000);
 				} else {
 					alert(err.message || 'Failed to join room. Please try again.');
 				}

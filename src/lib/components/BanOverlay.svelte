@@ -10,12 +10,9 @@
 	async function leaveRoom() {
         if (!authStore.user || !roomStore.currentRoom || isLeaving) return;
         isLeaving = true;
-
-        const roomId = roomStore.currentRoom.id;
-
         try {
-            // Do NOT delete the room_members row — the banned row must stay so
-            // the ban persists and the member cannot rejoin until unbanned.
+            // Do NOT delete the room_members row — banned row must persist so
+            // the ban is enforced on rejoin until the host explicitly unbans.
             roomStore.leaveRoom();
             goto('/dashboard');
         } catch {

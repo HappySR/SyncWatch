@@ -102,6 +102,7 @@
 			if (errorMsg.includes('banned')) {
 				toastStore.show(errorMsg, 'ban', 8000);
 				goto('/dashboard');
+				return;
 			} else {
 				alert(`${errorMsg}. Returning to dashboard.`);
 				goto('/dashboard');

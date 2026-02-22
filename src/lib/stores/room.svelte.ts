@@ -401,8 +401,14 @@ class RoomStore {
 	private handleUnbanDetected() {
 		if (this.isBanned) {
 			this.isBanned = false;
+			this.bannedAt = 0;
 			toastStore.show('You have been unbanned from this room.', 'unban');
 			console.log('✅ Unban detected — hiding ban overlay');
+			// Re-sync video state so the unbanned member sees the current video
+			import('./player.svelte').then(({ playerStore }) => {
+				playerStore.resetSyncState();
+				playerStore.syncWithRoom();
+			});
 		}
 	}
 
