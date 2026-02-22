@@ -90,15 +90,20 @@
 			console.log('✅ Player synced');
 
 			loading = false;
-		} catch (error: any) {
-			console.error('❌ Failed to join room:', error);
+		} catch (err: any) {
+			console.error('❌ Failed to join room:', err);
 			loading = false;
 
-			const errorMsg = error.message || 'Failed to join room';
+			const errorMsg = err.message || 'Failed to join room';
 
-			// Show error and redirect after delay
-			alert(`${errorMsg}. Returning to dashboard.`);
-			goto('/dashboard');
+			// Use toast for ban errors, alert for others
+			if (errorMsg.includes('banned')) {
+				toastStore.show(errorMsg, 'ban', 8000);
+				goto('/dashboard');
+			} else {
+				alert(`${errorMsg}. Returning to dashboard.`);
+				goto('/dashboard');
+			}
 		}
 	}
 

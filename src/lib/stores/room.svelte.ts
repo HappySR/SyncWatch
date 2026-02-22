@@ -35,17 +35,17 @@ class RoomStore {
 	private reconnectTimeout: any = null;
 	private banPollInterval: any = null;
 
-	// Internal helper: merge a DB update into local members[], preserving profiles & is_online
 	private applyMemberUpdate(updated: Partial<RoomMember> & { user_id: string }) {
 		const index = this.members.findIndex((m) => m.user_id === updated.user_id);
 		if (index !== -1) {
-			this.members[index] = {
-				...this.members[index],
+			const next = [...this.members];
+			next[index] = {
+				...next[index],
 				...updated,
-				profiles: this.members[index].profiles,
-				is_online: this.members[index].is_online
+				profiles: next[index].profiles,   // never overwrite — not in DB payload
+				is_online: next[index].is_online   // never overwrite — presence-only field
 			};
-			this.members = [...this.members];
+			this.members = next;
 		}
 	}
 
@@ -395,9 +395,13 @@ class RoomStore {
 
 	private handleBanDetected() {
 		const roomName = this.currentRoom?.name || 'the room';
+		// Fire toast first, then leave after a short delay so the toast registers
+		// before the component tree unmounts
 		toastStore.show(`You have been banned from "${roomName}".`, 'ban', 8000);
-		this.leaveRoom();
-		import('$app/navigation').then(({ goto }) => goto('/dashboard'));
+		setTimeout(() => {
+			this.leaveRoom();
+			import('$app/navigation').then(({ goto }) => goto('/dashboard'));
+		}, 100);
 	}
 
 	async updateMembersFromPresence(presenceState: any) {
@@ -538,15 +542,21 @@ class RoomStore {
 						}
 					}
 
-					// Merge preserving profiles and is_online
-					this.applyMemberUpdate({
-						user_id: updatedMember.user_id,
-						has_controls: updatedMember.has_controls,
-						is_banned: updatedMember.is_banned,
-						joined_at: updatedMember.joined_at,
-						id: updatedMember.id,
-						room_id: updatedMember.room_id
-					});
+					// Update the member in the list, preserving profiles and is_online
+					// Use full array replacement to guarantee Svelte 5 reactivity triggers
+					const idx = this.members.findIndex((m) => m.user_id === updatedMember.user_id);
+					if (idx !== -1) {
+						const updated = [...this.members];
+						updated[idx] = {
+							...updated[idx],                          // keep profiles, is_online, etc.
+							has_controls: updatedMember.has_controls,
+							is_banned: updatedMember.is_banned,
+							id: updatedMember.id,
+							room_id: updatedMember.room_id,
+							joined_at: updatedMember.joined_at,
+						};
+						this.members = updated;                       // triggers reactive update for ALL watchers
+					}
 				}
 			)
 			.subscribe((status) => {
